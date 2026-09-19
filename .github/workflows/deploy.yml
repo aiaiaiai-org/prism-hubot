@@ -55,7 +55,7 @@ jobs:
           RELEASE_REF: ${{ env.RELEASE_REF }}
         run: |
           set -Eeuo pipefail
-          gh api --fail "/repos/aiaiaiai-org/prism-hubot/commits/$RELEASE_REF" --jq '.sha' >/dev/null
+          gh api "/repos/aiaiaiai-org/prism-hubot/commits/$RELEASE_REF" --jq '.sha' >/dev/null
 
       - name: Dispatch contracted workload
         env:

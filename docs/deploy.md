@@ -46,7 +46,7 @@ The current infra contract resolves:
 | Workload | `prism-hubot` |
 | Repository | `aiaiaiai-org/prism-hubot` |
 | Runtime | `systemd-release` |
-| Target | `edge-prod-1` |
+| Target | `edge-prod-2` |
 | Deployment path | `/opt/prism-hubot` |
 | Service | `prism-hubot.service` |
 | Release retention | `5` |
@@ -54,7 +54,28 @@ The current infra contract resolves:
 
 The target's `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`, and optional
 `SSH_PORT) are owned only by the corresponding GitHub Environment in infra.
-The product repository supplies only the requested release ref.
+The product repository supplies only the requested release ref. All `aiaiaiai-org/*`
+product workloads (including Prism Hubot) are placed on `edge-prod-2`; 0x1
+and Market workloads remain on `edge-prod-1`.
+
+## Migration from edge-prod-1
+
+Updating the infra contract changes where **future** dispatches deploy; it does not
+move an existing systemd unit, files, credentials, webhook, or running process.
+An explicitly authorised cutover must:
+
+1. Prepare Ruby, Bundler, git, the systemd unit and SSH permissions on `edge-prod-2`.
+2. Securely transfer the necessary `/opt/prism-hubot/shared/` runtime state
+   (especially `.env` and persistent interaction/delivery state), retaining
+   correct ownership and restrictive permissions; do not commit or print secrets.
+3. Validate the new host and release before activation. Stop the old instance
+   before activating the new one so the same Telegram bot does not have two
+   live consumers.
+4. Deploy via the product `Deploy` workflow (which dispatches to infra), then
+   update and verify the public webhook origin as required. Confirm `/healthz`,
+   webhook status, menu and Hub delivery before retiring the old host state.
+
+Merging the infra or documentation PR must not deploy or restart either VPS.
 
 ## Remote layout
 
@@ -77,8 +98,8 @@ secret or variable.
 
 ## Server prerequisites
 
-Infra does not provision the machine. Before the first deployment the target
-must already have:
+Infra does not provision the machine. Before the first deployment on
+`edge-prod-2`, that target must already have:
 
 - Ruby `4.0.6` and Bundler on the deploy user's `PATH`;
 - `git`, because `aiaiaiai-prism-bot` is a pinned Git dependency;

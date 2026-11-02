@@ -124,7 +124,9 @@ module PrismHubot
     end
 
     def response(status, body)
-      [status, JSON_HEADERS, [JSON.generate(body)]]
+      # Rack 3 response headers must be mutable; Rack::ContentLength, which rackup always adds,
+      # writes to them. Every response gets its own copy.
+      [status, JSON_HEADERS.dup, [JSON.generate(body)]]
     end
   end
 end

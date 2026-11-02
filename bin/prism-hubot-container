@@ -16,4 +16,5 @@ fi
 
 mkdir -p "$PRISM_HUBOT_INTERACTION_STATE_DIR"
 bundle exec rake telegram:webhook telegram:commands
-exec bundle exec rackup config.ru -s Puma -o 0.0.0.0 -p "${PORT:-1927}"
+# deployment: no Rack::Lint or ShowExceptions in front of the app, as in production.
+exec bundle exec rackup config.ru -E deployment -s Puma -o 0.0.0.0 -p "${PORT:-1927}"

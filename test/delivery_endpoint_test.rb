@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "stringio"
+require "rack/content_length"
 
 class DeliveryEndpointTest < Minitest::Test
   include PrismHubotTestSupport
@@ -35,6 +36,22 @@ class DeliveryEndpointTest < Minitest::Test
       @started << true
       @release.pop
       PrismBot::Domain::DeliveryResult.new(provider_message_id: 42, idempotency_key: idempotency_key)
+    end
+  end
+
+  def test_responses_survive_rack_content_length
+    Dir.mktmpdir do |directory|
+      endpoint = build_endpoint(
+        outbound_delivery: PrismHubotTestSupport::FakeOutboundDelivery.new,
+        idempotency_store: build_idempotency_store(directory),
+        max_body_bytes: 65_536
+      )
+      # rackup always wraps the app in Rack::ContentLength, which adds a header.
+      status, headers, = Rack::ContentLength.new(endpoint).call(rack_env)
+
+      assert_equal 200, status
+      refute_predicate headers, :frozen?
+      assert headers.key?("content-length")
     end
   end
 

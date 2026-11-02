@@ -48,9 +48,10 @@ jobs:
           docker run -d --name hubot -p 127.0.0.1:1927:1927 \
             -e PRISM_BOT_INSTANCE_ID=ci -e PRISM_BOT_TELEGRAM_TOKEN=ci:token \
             -e PRISM_BOT_TELEGRAM_WEBHOOK_SECRET=ci-webhook-secret-of-at-least-32-chars \
+            -e PRISM_BOT_DELIVERY_SECRET=ci-delivery-secret-of-at-least-32-characters \
             -e PRISM_HUB_BASE_URL=https://hub.example.test -e PRISM_HUB_API_TOKEN=ci-hub-api-token-of-at-least-32-characters \
             prism-hubot:verified \
-            sh -ec 'mkdir -p "$PRISM_HUBOT_INTERACTION_STATE_DIR"; exec bundle exec rackup config.ru -E deployment -s Puma -o 0.0.0.0 -p 1927'
+            sh -ec 'mkdir -p "$PRISM_HUBOT_INTERACTION_STATE_DIR" "$PRISM_HUBOT_DELIVERY_IDEMPOTENCY_DIR"; exec bundle exec rackup config.ru -E deployment -s Puma -o 0.0.0.0 -p 1927'
           for _ in $(seq 1 30); do
             curl --fail --silent http://127.0.0.1:1927/healthz >/dev/null && break
             sleep 1

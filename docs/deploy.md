@@ -48,17 +48,19 @@ In this repository's `production` Environment:
 | --- | --- |
 | `PRISM_BOT_TELEGRAM_TOKEN` | BotFather token |
 | `PRISM_BOT_TELEGRAM_WEBHOOK_SECRET` | Telegram's `secret_token` for this webhook; set on every start, so changing it here and republishing rotates it |
-| `PRISM_HUB_API_TOKEN` | scoped Prism Hub client credential |
+| `PRISM_HUB_API_TOKEN` | scoped Prism Hub client credential, at least 32 characters |
+| `PRISM_BOT_DELIVERY_SECRET` | authenticates `POST /api/v1/delivery` from Prism Hub; 32–256 characters of `A-Z a-z 0-9 _ -`. prism-bot requires it. Generate it for this bot alone: Hub delivers to one destination (h-ua-bot today), so it is not shared yet |
 
 They leave this repository only sealed to the target's public key. Infra stores
 none of them. `INFRA_DEPLOY_TOKEN` is no longer used and can be deleted.
 
 ## Receiving Hub deliveries
 
-Setting `PRISM_BOT_DELIVERY_SECRET` mounts `POST /api/v1/delivery`, the
-receiving side of Prism Hub's delivery worker. This deployment does not set it;
-adding it means adding the name to infra's contract and to the sealed set in
-**Publish image**.
+`PRISM_BOT_DELIVERY_SECRET` mounts `POST /api/v1/delivery`, the receiving side
+of Prism Hub's delivery worker, with its idempotency records in
+`/data/delivery-idempotency` on the state volume. Hub sends to one destination,
+so this bot receives deliveries only once Hub is pointed at it with the same
+secret.
 
 ## Telegram command menu
 

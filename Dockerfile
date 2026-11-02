@@ -25,7 +25,8 @@ WORKDIR /app
 ENV BUNDLE_DEPLOYMENT=1 \
     BUNDLE_PATH=/usr/local/bundle \
     PORT=1927 \
-    PRISM_HUBOT_INTERACTION_STATE_DIR=/data/interaction-state
+    PRISM_HUBOT_INTERACTION_STATE_DIR=/data/interaction-state \
+    PRISM_HUBOT_DELIVERY_IDEMPOTENCY_DIR=/data/delivery-idempotency
 COPY --from=gems /usr/local/bundle /usr/local/bundle
 COPY . .
 USER hubot

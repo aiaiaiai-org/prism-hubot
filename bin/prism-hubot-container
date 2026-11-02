@@ -14,7 +14,7 @@ if ! printf '%s' "$secret" | grep -Eq '^[A-Za-z0-9_-]{32,256}$'; then
   exit 78
 fi
 
-mkdir -p "$PRISM_HUBOT_INTERACTION_STATE_DIR"
+mkdir -p "$PRISM_HUBOT_INTERACTION_STATE_DIR" "$PRISM_HUBOT_DELIVERY_IDEMPOTENCY_DIR"
 bundle exec rake telegram:webhook telegram:commands
 # deployment: no Rack::Lint or ShowExceptions in front of the app, as in production.
 exec bundle exec rackup config.ru -E deployment -s Puma -o 0.0.0.0 -p "${PORT:-1927}"

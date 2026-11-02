@@ -1,9 +1,9 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 
 module PrismHubot
-  # Reads a deployment environment file the way systemd reads
-  # `EnvironmentFile=`, which is how the running service is configured
-  # (`deploy/prism-hubot.service`).
+  # Reads an environment file the way systemd reads `EnvironmentFile=`, the
+  # format the earlier systemd deployment used; local rake tasks still read
+  # `.env` through it.
   #
   # Deployment tasks used to read the same file with `bash`, but `source` is
   # not a parser: it executes what it reads. `TOKEN=<from-botfather>` is a

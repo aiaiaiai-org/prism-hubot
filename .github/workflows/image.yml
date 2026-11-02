@@ -1,0 +1,59 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Image
+
+# Every pull request proves the image builds and serves /healthz. Publishing is Publish image's job,
+# after Full CI verifies a master head; aiaiaiai-org/infra then delivers it (docs/deploy.md).
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    name: Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: prism-hubot:verified
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Serve /healthz without Telegram
+        run: |
+          set -Eeuo pipefail
+          # The web process alone, with placeholder configuration: proves the image boots and
+          # answers health checks. The real entrypoint also talks to Telegram, so it is not run here.
+          docker run --rm -d --name hubot -p 127.0.0.1:1927:1927 \
+            -e PRISM_BOT_INSTANCE_ID=ci -e PRISM_BOT_TELEGRAM_TOKEN=ci:token \
+            -e PRISM_BOT_TELEGRAM_WEBHOOK_SECRET=ci-webhook-secret-of-at-least-32-chars \
+            -e PRISM_HUB_BASE_URL=https://hub.example.test -e PRISM_HUB_API_TOKEN=ci-token \
+            prism-hubot:verified \
+            sh -ec 'mkdir -p "$PRISM_HUBOT_INTERACTION_STATE_DIR"; exec bundle exec rackup config.ru -s Puma -o 0.0.0.0 -p 1927'
+          trap 'docker logs hubot; docker stop hubot' EXIT
+          for _ in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:1927/healthz >/dev/null && break
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:1927/healthz
+          # The entrypoint refuses a webhook secret Telegram would reject, before any network call.
+          ! docker run --rm -e PRISM_BOT_TELEGRAM_WEBHOOK_SECRET='has spaces' prism-hubot:verified

@@ -43,13 +43,14 @@ jobs:
           set -Eeuo pipefail
           # The web process alone, with placeholder configuration: proves the image boots and
           # answers health checks. The real entrypoint also talks to Telegram, so it is not run here.
-          docker run --rm -d --name hubot -p 127.0.0.1:1927:1927 \
+          # Kept after it exits, so its log explains a failed boot.
+          trap 'docker logs hubot 2>&1 || true; docker rm --force hubot >/dev/null 2>&1 || true' EXIT
+          docker run -d --name hubot -p 127.0.0.1:1927:1927 \
             -e PRISM_BOT_INSTANCE_ID=ci -e PRISM_BOT_TELEGRAM_TOKEN=ci:token \
             -e PRISM_BOT_TELEGRAM_WEBHOOK_SECRET=ci-webhook-secret-of-at-least-32-chars \
             -e PRISM_HUB_BASE_URL=https://hub.example.test -e PRISM_HUB_API_TOKEN=ci-token \
             prism-hubot:verified \
             sh -ec 'mkdir -p "$PRISM_HUBOT_INTERACTION_STATE_DIR"; exec bundle exec rackup config.ru -s Puma -o 0.0.0.0 -p 1927'
-          trap 'docker logs hubot; docker stop hubot' EXIT
           for _ in $(seq 1 30); do
             curl --fail --silent http://127.0.0.1:1927/healthz >/dev/null && break
             sleep 1

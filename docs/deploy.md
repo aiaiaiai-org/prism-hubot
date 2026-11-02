@@ -1,184 +1,66 @@
 # Deployment
 
-`prism-hubot` is deployed through the canonical `aiaiaiai-org/infra`
-repository. This repository's Deploy workflow never opens SSH to a VPS and
-does not contain the target host, user, private key, port, or deployment path.
+`prism-hubot` is a container workload of `aiaiaiai-org/infra` on `edge-prod-2`.
+This repository publishes; infra deploys. It holds no credential for infra and
+no SSH material.
 
-The release remains directory-based: infra checks out the requested commit,
-archives that exact source tree, installs it under the contracted
-`/opt/prism-hubot` path, preserves shared runtime state, atomically repoints
-`current`, restarts `prism-hubot.service`, and verifies that the unit remains
-active. The target, path, service name, and release retention are all resolved
-from the merged workload contract in infra.
+## Delivery chain
 
-## Trigger
+`Full CI (master) → Publish image → ghcr.io image + sealed secrets, both attested → infra Reconcile deliveries → infra Deploy workload`
 
-- manually via `workflow_dispatch`, optionally with an explicit `ref`.
+1. **Full CI** verifies a commit on `master`.
+2. **Publish image** (`.github/workflows/publish.yml`) runs only after a green
+   Full CI for the current `master` head. It builds that commit, pushes
+   `ghcr.io/aiaiaiai-org/prism-hubot:<full commit SHA>` and attests it. In this
+   repository's `production` Environment it then seals the runtime secrets with
+   `age` to the target server's public key (`encryptionRecipient` in infra's
+   server contract) and publishes them as `…:<full commit SHA>.secrets`,
+   attested the same way. The secret names come from infra's `prism-hubot`
+   contract; if they differ from what the workflow seals, it stops.
+3. **Infra** verifies both, decrypts the envelope only inside its deploy job
+   for the target, and starts the container. See infra's
+   `docs/automatic-delivery.md`.
 
-Deploy is deliberately not triggered by merges or CI completion. Merging to
-`master` runs normal verification only; an operator explicitly starts Deploy
-and selects the ref to release.
+**Image** proves on every pull request that the image builds and serves
+`/healthz`. Rollbacks are manual in infra: **Deploy workload** with an earlier
+verified digest.
 
-The workflow dispatches `deploy-workload` to `aiaiaiai-org/infra`. Infra then
-selects the target GitHub Environment from the workload contract and reuses that
-environment's machine credentials. GitHub's repository-dispatch API requires a credential with Contents write access
-to the target repository; that credential is the only deployment secret kept
-here and it grants no SSH access.
+## Runtime
 
-Deployments are serialised through the `deploy-vps` concurrency group and run
-in the `production` environment, so approval or branch restrictions can be
-attached there.
+`bin/prism-hubot-container` is the image's one process. On every start it
+checks that `PRISM_BOT_TELEGRAM_WEBHOOK_SECRET` is a value Telegram accepts
+(32–256 characters of `A-Z a-z 0-9 _ -`), points Telegram at
+`PRISM_HUBOT_WEBHOOK_URL` with that secret (`rake telegram:webhook`), publishes
+the command menu (`rake telegram:commands`), and then serves Puma on port 1927.
+If Telegram rejects either call, the container exits and the deployment fails.
 
-## Repository secrets
+Infra's contract sets the non-secret configuration: the instance id, the Hub
+URL, the webhook URL (`https://api.aiaiaiai.org/prism-hubot/telegram/webhook`,
+behind the `/prism-hubot/` edge route) and the interaction state directory on
+the `prism-hubot-state` volume. Other settings keep the defaults in
+`.env.example`.
 
-| Secret | Required | Meaning |
-| --- | --- | --- |
-| `INFRA_DEPLOY_TOKEN` | yes | GitHub credential allowed to create `repository_dispatch` events in `aiaiaiai-org/infra` |
+## Secrets
 
-No `SSH_*` secret belongs in this repository.
+In this repository's `production` Environment:
 
-## Deployment contract
-
-The current infra contract resolves:
-
-| Property | Contract |
+| Secret | Meaning |
 | --- | --- |
-| Workload | `prism-hubot` |
-| Repository | `aiaiaiai-org/prism-hubot` |
-| Runtime | `systemd-release` |
-| Target | `edge-prod-2` |
-| Deployment path | `/opt/prism-hubot` |
-| Service | `prism-hubot.service` |
-| Release retention | `5` |
-| Post-activation hook | `bundle exec rake telegram:commands` |
+| `PRISM_BOT_TELEGRAM_TOKEN` | BotFather token |
+| `PRISM_BOT_TELEGRAM_WEBHOOK_SECRET` | Telegram's `secret_token` for this webhook; set on every start, so changing it here and republishing rotates it |
+| `PRISM_HUB_API_TOKEN` | scoped Prism Hub client credential, at least 32 characters |
+| `PRISM_BOT_DELIVERY_SECRET` | authenticates `POST /api/v1/delivery` from Prism Hub; 32–256 characters of `A-Z a-z 0-9 _ -`. prism-bot requires it. Generate it for this bot alone: Hub delivers to one destination (h-ua-bot today), so it is not shared yet |
 
-The target's `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`, and optional
-`SSH_PORT) are owned only by the corresponding GitHub Environment in infra.
-The product repository supplies only the requested release ref. All `aiaiaiai-org/*`
-product workloads (including Prism Hubot) are placed on `edge-prod-2`; 0x1
-and Market workloads remain on `edge-prod-1`.
+They leave this repository only sealed to the target's public key. Infra stores
+none of them. `INFRA_DEPLOY_TOKEN` is no longer used and can be deleted.
 
-## Migration from edge-prod-1
+## Receiving Hub deliveries
 
-Updating the infra contract changes where **future** dispatches deploy; it does not
-move an existing systemd unit, files, credentials, webhook, or running process.
-An explicitly authorised cutover must:
-
-1. Prepare Ruby, Bundler, git, the systemd unit and SSH permissions on `edge-prod-2`.
-2. Securely transfer the necessary `/opt/prism-hubot/shared/` runtime state
-   (especially `.env` and persistent interaction/delivery state), retaining
-   correct ownership and restrictive permissions; do not commit or print secrets.
-3. Validate the new host and release before activation. Stop the old instance
-   before activating the new one so the same Telegram bot does not have two
-   live consumers.
-4. Deploy via the product `Deploy` workflow (which dispatches to infra), then
-   update and verify the public webhook origin as required. Confirm `/healthz`,
-   webhook status, menu and Hub delivery before retiring the old host state.
-
-Merging the infra or documentation PR must not deploy or restart either VPS.
-
-## Remote layout
-
-The release runtime uses:
-
-```text
-/opt/prism-hubot/
-  current -> releases/<sha>
-  releases/<sha>/
-  shared/
-    .env
-    bundle/
-    var/interaction-state/
-    var/delivery-idempotency/
-```
-
-`shared/.env` and both state directories survive releases. The release
-retention policy is owned by the infra contract, not by a product-repository
-secret or variable.
-
-## Server prerequisites
-
-Infra does not provision the machine. Before the first deployment on
-`edge-prod-2`, that target must already have:
-
-- Ruby `4.0.6` and Bundler on the deploy user's `PATH`;
-- `git`, because `aiaiaiai-prism-bot` is a pinned Git dependency;
-- `/opt/prism-hubot/shared/.env`, containing the real runtime values and never
-  committed to Git;
-- `prism-hubot.service` installed and restartable by the deploy user through
-  passwordless `sudo -n systemctl`.
-
-The existing `deploy/install-service.sh` remains the provisioning tool for the
-systemd unit. It is intentionally separate from release deployment.
-
-## Environment file
-
-`shared/.env` is read by systemd as an `EnvironmentFile=`, not by a shell. The
-two are different languages, and the difference is not cosmetic: `bash` executes
-what it reads, so `PRISM_BOT_TELEGRAM_TOKEN=<from-botfather>` is a redirection,
-`SECRET=a|b` is a pipeline, and `URL=$(cat /etc/shadow)` is a command
-substitution. A file the service starts from perfectly well used to abort the
-deployment with `syntax error near unexpected token`.
-
-Nothing in this repository sources that file any more. Deployment tasks read it
-with `PrismHubot::EnvFile`, a transcription of systemd's own parser, so what the
-tasks see is what the running service sees:
-
-- `NAME=value`, one assignment per line; no `export`, and no whitespace around
-  the `=`;
-- `#` or `;` in the first non-blank column starts a comment;
-- single and double quotes protect whitespace, `#` and shell metacharacters, and
-  may span lines; `\` escapes the next character and continues the line at the
-  end of one;
-- trailing whitespace of an unquoted value is dropped;
-- no variable expansion and no command substitution. `$` is a literal `$`.
-
-systemd ignores lines it cannot parse and starts the service without them, which
-looks exactly like a credential that was never set. `Deploy` therefore checks the
-file after installing the release and before repointing `current`, so a bad line
-fails while the previous release is still serving. Run the same check by hand:
-
-```bash
-cd /opt/prism-hubot/current
-bundle exec rake env:check
-```
-
-It prints variable names, never values, and exits non-zero when systemd would
-drop a line, quoting the line number.
-
-## systemd unit
-
-The unit is shipped with the repository as a template
-(`deploy/prism-hubot.service`) and installed by `deploy/install-service.sh`. Run
-it once on the VPS, as root, from a checkout of this repository, before the
-first deployment:
-
-```bash
-sudo DEPLOY_PATH=/opt/prism-hubot DEPLOY_USER=deploy ./deploy/install-service.sh
-```
-
-The script substitutes the deployment path, service user, `bundle` path, bind
-address and port into the unit, writes it to
-`/etc/systemd/system/prism-hubot.service`, writes a `sudoers` drop-in that lets
-the deploy user restart that unit without a password or TTY, reloads systemd and
-enables the unit. It deliberately does not start it: the unit needs
-`$DEPLOY_PATH/current`, which the first `Deploy` run creates. Re-running the
-script is safe.
-
-Overridable environment variables: `DEPLOY_PATH` (`/opt/prism-hubot`),
-`DEPLOY_USER` (`deploy`), `BIND_ADDRESS` (`127.0.0.1`), `PORT` (`9292`),
-`BUNDLE_BIN` (resolved from the deploy user's `PATH`), `UNIT_NAME`
-(`prism-hubot.service`) and `INSTALL_SUDOERS` (`yes`).
-
-`WorkingDirectory` points at the `current` symlink, so a restart after a deploy
-picks up the new release. Terminate TLS in front of the process and forward
-Telegram webhook requests to `/telegram/webhook`; `/healthz` stays internal.
-
-If the service is managed some other way — a user unit, a container, a different
-unit name — leave this script alone and set the `DEPLOY_RESTART_COMMAND`
-repository variable instead. The workflow checks before uploading anything: with
-no `DEPLOY_RESTART_COMMAND` set, it requires `prism-hubot.service` to exist on
-the host and fails with installation instructions when it does not.
+`PRISM_BOT_DELIVERY_SECRET` mounts `POST /api/v1/delivery`, the receiving side
+of Prism Hub's delivery worker, with its idempotency records in
+`/data/delivery-idempotency` on the state volume. Hub sends to one destination,
+so this bot receives deliveries only once Hub is pointed at it with the same
+secret.
 
 ## Telegram command menu
 
@@ -189,13 +71,12 @@ owned by the bot token, not by the running process: a bot that never calls
 and `/help` is rendered from the same entries, so the menu and the help text
 cannot drift. A test asserts the menu covers exactly the routed commands.
 
-`infra` runs the contracted post-activation hook (`bundle exec rake telegram:commands`) after the new release is active. The task reads
-the token from `.env` in the working directory, which in a release is the symlink
-to `shared/.env`; `PRISM_HUBOT_ENV_FILE` overrides the path, and variables
-already exported into the process win over the file. To do it by hand:
+The container publishes it on every start (`bin/prism-hubot-container`), together
+with the webhook. Locally, the task reads the token from `.env` in the working
+directory; `PRISM_HUBOT_ENV_FILE` overrides the path, and variables already
+exported into the process win over the file. To do it by hand:
 
 ```bash
-cd /opt/prism-hubot/current
 bundle exec rake telegram:commands         # publish the menu
 bundle exec rake telegram:commands_status  # show what Telegram currently serves
 ```
@@ -214,7 +95,6 @@ Set `PRISM_HUBOT_WEBHOOK_URL` in `shared/.env` to the public HTTPS URL of
 `/telegram/webhook`, then:
 
 ```bash
-cd /opt/prism-hubot/current
 bundle exec rake telegram:webhook         # register it
 bundle exec rake telegram:webhook_status  # url, pending updates, last error
 ```

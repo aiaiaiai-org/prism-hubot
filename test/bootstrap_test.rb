@@ -61,6 +61,8 @@ class BootstrapTest < Minitest::Test
       "PRISM_BOT_INSTANCE_ID" => "prism-hubot",
       "PRISM_BOT_TELEGRAM_TOKEN" => "telegram-test-token",
       "PRISM_BOT_TELEGRAM_WEBHOOK_SECRET" => "a" * 32,
+      # prism-bot requires it; the bootstrap builds its delivery endpoint.
+      "PRISM_BOT_DELIVERY_SECRET" => "d" * 32,
       "PRISM_BOT_TELEGRAM_ALLOWED_CHAT_IDS" => "[]",
       "PRISM_BOT_DEFAULT_CHANNEL_IDS" => "[]",
       "PRISM_BOT_DEFAULT_LOCALE" => "uk-UA",

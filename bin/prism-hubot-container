@@ -1,0 +1,20 @@
+#!/bin/sh
+# © 2026 aiaiaiai · aiaiaiai.org
+#
+# The container's one process. Telegram's webhook and command menu are state owned by the bot
+# token, so they are set on every start from this release's environment. If Telegram rejects
+# either, the container exits and the deployment fails visibly instead of serving a bot nobody
+# can reach.
+set -eu
+
+secret="${PRISM_BOT_TELEGRAM_WEBHOOK_SECRET:-}"
+# Telegram accepts 1-256 characters of A-Z, a-z, 0-9, _ and -; this client requires at least 32.
+if ! printf '%s' "$secret" | grep -Eq '^[A-Za-z0-9_-]{32,256}$'; then
+  echo "PRISM_BOT_TELEGRAM_WEBHOOK_SECRET must be 32-256 characters of A-Z, a-z, 0-9, _ or -" >&2
+  exit 78
+fi
+
+mkdir -p "$PRISM_HUBOT_INTERACTION_STATE_DIR" "$PRISM_HUBOT_DELIVERY_IDEMPOTENCY_DIR"
+bundle exec rake telegram:webhook telegram:commands
+# deployment: no Rack::Lint or ShowExceptions in front of the app, as in production.
+exec bundle exec rackup config.ru -E deployment -s Puma -o 0.0.0.0 -p "${PORT:-1927}"

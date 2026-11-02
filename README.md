@@ -40,7 +40,7 @@ set -a && source .env && set +a
 bundle exec rackup config.ru -s Puma -p 9292
 ```
 
-The `source` line is a local convenience. On the VPS the same file is read by systemd as an `EnvironmentFile=`, which parses rather than executes it, so keep values quoted instead of shell-escaped, and check what systemd would take from the file with `bundle exec rake env:check`. The rake tasks below read it through that same parser; see [docs/deploy.md](docs/deploy.md#environment-file).
+The `source` line is a local convenience. The rake tasks below read the same file with a parser that follows systemd's `EnvironmentFile=` rules, which parses rather than executes it, so keep values quoted instead of shell-escaped; `bundle exec rake env:check` reports what it reads. In production the container gets its environment from infra; see [docs/deploy.md](docs/deploy.md).
 
 Configure Telegram to send updates to `/telegram/webhook` using the same webhook secret as `PRISM_BOT_TELEGRAM_WEBHOOK_SECRET`; `rake telegram:webhook` registers it from `PRISM_HUBOT_WEBHOOK_URL` and `rake telegram:webhook_status` reports what Telegram knows. `/healthz` is available for process liveness.
 
@@ -88,7 +88,7 @@ See [`docs/architecture.md`](docs/architecture.md) for ownership, state-persiste
 
 ## Deployment
 
-`Deploy` is manual-only and accepts an optional `ref`. It dispatches to `aiaiaiai-org/infra`, which deploys this service exclusively on `edge-prod-2` using its host credentials and the reviewed workload contract. Merging to `master` runs verification workflows but does not deploy. The systemd unit is shipped with the repository (`deploy/prism-hubot.service`) and installed on the VPS once with `deploy/install-service.sh`. The Telegram command menu is published from `lib/prism_hubot/command_menu.rb` by `rake telegram:commands`, which `Deploy` runs on every release. See [`docs/deploy.md`](docs/deploy.md) for the required secrets, remote layout, and server prerequisites.
+This repository only publishes: after Full CI verifies a `master` head, `Publish image` pushes and attests `ghcr.io/aiaiaiai-org/prism-hubot:<commit>` together with its runtime secrets sealed to the target's public key, and `aiaiaiai-org/infra` deploys it as a container on `edge-prod-2`. The container registers the Telegram webhook and command menu on every start. See [`docs/deploy.md`](docs/deploy.md) for the chain, the secrets and the runtime.
 
 ## Verification
 

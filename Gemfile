@@ -4,7 +4,7 @@ source "https://rubygems.org"
 
 gem "aiaiaiai-prism-bot",
   git: "https://github.com/aiaiaiai-org/prism-bot.git",
-  ref: "0748a4ec11332ac45b3fc776790b6694ddf5313f"
+  ref: "13332d07cc89bed8ccb3ad99867275a8334d1324"
 
 gem "bundler-audit"
 gem "minitest", "~> 5.25"

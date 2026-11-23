@@ -31,7 +31,7 @@ Provider credentials never enter this client. Telegram identity evidence, human 
 
 ## Planned features
 
-- **[Whisper](docs/whisper.md)** (proposed, not yet implemented): reply-aware reading of the last N Telegram group messages as a native voice message in the originating chat/topic.
+- **[Whisper](docs/whisper.md)** (proposed, not yet implemented): private-by-default, visibly labeled (`🔒 Приватно · Whisper`) Telegram message selection and native voice readback, with an optional **explicitly confirmed** public share (`🔓 Для всіх · Whisper`). The safe MVP uses ephemeral `/whisper` commands; normal `@prism_hubot` mentions and Telegram Inline Mode do not make a user's query private.
 
 ## Run locally
 

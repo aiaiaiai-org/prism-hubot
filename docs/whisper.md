@@ -2,68 +2,79 @@
 
 **Status:** proposed; documentation only. No message collection, speech generation, or Telegram voice delivery is implemented by this document.
 
-Whisper lets a member of a Telegram group ask `@prism-hubot` to **read a short range of group messages aloud and reply with a native Telegram voice message in that same chat/topic**. It is readback, not summarization or transcription. A language model is not required.
+Whisper lets a group member select an existing message or a range of messages and get **a native Telegram voice message visible only to that member by default**. This is literal text-to-speech readback, not summarization or transcription, and requires no LLM. **A public group voice message is a separate opt-in share action, never a default effect.**
 
 The product name **Whisper** does not imply integration with OpenAI's Whisper speech-to-text model: this feature needs **text-to-speech (TTS)**.
 
+## Privacy and product invariants
+
+1. **Private by default:** the selection UI, progress, errors, and final voice output are ephemeral messages targeted to the requesting Telegram user within the originating group/topic (or an explicitly requested private conversation). No group message text or generated audio is posted publicly without a deliberate, authenticated share action.
+2. **Every bot-owned private message must visibly state its audience:** prefix private text, picker, updates, and voice captions with **`🔒 Приватно · Whisper`**. When a user explicitly shares, label the outgoing public voice **`🔓 Для всіх · Whisper`**. Never label a public message as private. Telegram's own ephemeral UI indicators supplement, but do not replace, this label.
+3. **Single mutable status message:** selection → synthesis → delivery updates use one `ephemeral_message_id` and `editEphemeralMessageText` (or the appropriate ephemeral edit method), not a stream of new bot status messages. `set_message` is the product's state-update concept, **not** a Telegram API method. The finished voice is its own native `sendVoice` message; edit the status to “Готово” with an optional “Поділитися з усіма” button.
+4. **No implicit public fallback:** if Telegram cannot deliver privately, show no public transcription, audio, picker, or error containing private message content. Record a redacted operational failure instead; offer a private chat when safely possible.
+5. **Privacy of the *user's request* matters too:** sending a normal `@prism_hubot …` message to a group is visible to the group. Merely replying ephemerally does **not** retroactively hide that request. For the fully private invocation guarantee, register `/whisper` as an `is_ephemeral` bot command in supported groups (or use a private chat). The @mention syntax below is a **desired shorthand** for compatible surfaces, not a claim that Telegram makes ordinary mentions private.
+
 ## User experience and command contract
 
-| Group message sent by a member | Messages included in voice output |
+| Proposed request / selection | Meaning |
 | --- | --- |
-| `@prism-hubot последние 5` | The 5 most recent eligible messages before the command |
-| `@prism-hubot последние 10` | The 10 most recent eligible messages before the command |
-| `@prism-hubot экран` | An **approximate** screen-sized selection, not actual device viewport content |
-| Reply to a message with `@prism-hubot последние 10` | The replied-to message **and the 9 eligible messages immediately before it** |
-| Reply with `@prism-hubot экран` | The screen-sized selection **ending at and including** the replied-to message |
+| `/whisper` (ephemeral group command) | Privately open the current group's message picker without posting a visible command |
+| `@prism_hubot` | Intended shorthand: all authors; ordinary @mention text is **public**, so do not silently claim a private invocation |
+| `@prism_hubot @username` | Intended shorthand: filter the private message picker to one author |
+| `@prism_hubot @username @username_2` | Intended shorthand: show messages by either author (combined chronological range) |
+| `@prism_hubot 5` / `10` | Optional bounded count; the default picker does not require “останні” |
+| Reply with `/whisper` | Use the replied-to message as a possible anchor when supported by the client |
+| `/whisper 10` in a Reply | Select the replied-to message **and the 9 eligible preceding messages** (legacy backward-count contract) |
+| `/whisper екран` | Approximate screen-sized preset; Telegram does not expose the user's viewport |
 
-- `N` is the **number of eligible messages**, not the number of Telegram message IDs, and never denotes a forward-looking range. Voice playback is in **chronological order (oldest → newest)**.
-- No Reply: anchor is the last eligible message **strictly before the request**. With Reply: anchor is the Telegram `reply_to_message.message_id` in the same chat/topic, **inclusive**. A reply to a message after which new messages arrived still ends at the selected older message.
-- Initial proposed bounds: `N = 1..50`; common shortcuts are 5 and 10. The special `экран` mode selects up to **2,000 characters / 20 eligible messages**, walking backward from its anchor; these limits are product defaults to validate during implementation.
-- Telegram does **not** provide the bot with the requesting user's currently visible screen, scroll position, or viewport size. The word “экран” is therefore a convenience preset, **not** a literal screenshot-reading feature.
-- A successful request produces **one normal Telegram voice message** as a reply to the request in the same chat and forum topic. No document attachment, `sendAudio` music-player item, external link, or Mini App is an acceptable substitute.
-- Keep author changes audible (e.g., “Vlad: …”, “023: …”); preserve punctuation and the original order. Text and captions are eligible; stickers, videos, voice notes, service messages, bot-generated output, and the invocation itself do not count. Do not silently invent text for non-text media.
-- Treat Telegram reply quoting as a location marker only; do not prepend the quoted message a second time. Messages that themselves quote another message contribute only their own authored text/caption.
-- The feature must never publish the selected chat text to Prism publication channels: the output is confined to the requesting Telegram chat/topic.
+**Primary interaction — picker:** show a **private, paginated list** of recently observed messages, with the author, time, and a short, safe text snippet (never a public inline-result list). Selecting a message chooses that message as the **inclusive starting point**, and reads that message plus every newer eligible message matching the selected author filter up to a **fixed invocation-time snapshot**. Order of spoken text is chronological (oldest → newest); a second user joining the chat cannot extend an in-flight selection. Preserve the same `chat_id` and `message_thread_id` throughout.
+
+- Multiple authors: the query `@username @username_2` selects the **union** of both authors, not N messages per author. Resolve observed author IDs and confirm identities; user-facing handles are mutable labels, not permanent identity keys.
+- Initial proposed safety limits: at most 50 messages / 10,000 characters / a bounded voice duration per generation, applied *before* TTS. If a selection exceeds these limits, show the exact limitation **privately** and require narrowing it; never silently truncate.
+- Telegram Bot API cannot tell a bot which messages are visible on an iPhone screen. The word `екран` is only a preset for approximately 2,000 characters / 20 messages.
+- Text and captions are eligible; service messages, stickers, video/voice-only messages, bot replies, the invocation itself, and unobserved history are not. Quote text is an anchor/selection only, not duplicate content. Identify author changes in narration without guessing missing content.
+- The simplest starting version is a **single narrator voice**, speaking author names on changes. Multi-voice dialogue is an optional later feature, not a prerequisite.
+- **No public Telegram Inline Mode for group-history snippets:** traditional inline results appear over the keyboard but selecting one sends content to the current chat; `InlineQuery` does not identify the exact group history. The desired “list over the keyboard” resembles inline UX but cannot guarantee private per-group browsing. Implement the safe MVP as an ephemeral `/whisper` command with private inline-keyboard buttons; revisit the exact keyboard-overlay affordance only with a verified Telegram API that can maintain the privacy contract.
+- **User-confirmed publishing:** after private delivery, offer “Поділитися з усіма” → explicit confirmation (scope, voice preview, destination) → one public `sendVoice` to the same authorized group/topic, labeled `🔓 Для всіх · Whisper`. No auto-share, no external Prism publication workflow, and no cross-chat forward. The private voice stays private even if sharing fails.
+
 
 ### User-visible failures
 
-Respond in the requesting chat/topic with a concise explanation when:
+All failures must be **ephemeral and visibly marked `🔒 Приватно · Whisper`**. Explain precisely when Whisper is not enabled, the bot lacks ordinary-message access, the anchor or requested history is unavailable, a selected author cannot be resolved, the request exceeds generation limits, TTS fails, or Telegram refuses private delivery. If ephemeral delivery fails, **never post a public replacement containing context**.
 
-- Whisper has not been enabled by that chat's administrators;
-- the bot cannot receive ordinary group messages because of Telegram group privacy settings;
-- the requested older history was never observed (including messages predating the bot's arrival);
-- the selected Reply anchor is unavailable, outside the retained history, or belongs to a different chat/topic;
-- no eligible text exists, the request exceeds limits, or speech generation fails.
-
-Do **not** pretend to have read the full requested range if fewer messages are available. A deliberate, explicitly labeled partial-readback mode could be added later; it is not part of the initial contract.
+Do not pretend that requested unavailable history was read, or silently reduce the selected range. The user may choose a smaller range or retry. Avoid group-visible error text that includes quotes, usernames, or private history details.
 
 ## Telegram API constraints
 
-Telegram Bot API does **not** expose an arbitrary “get last N messages from group history” endpoint. The bot must observe new updates as they arrive and maintain a bounded history buffer. A reply update supplies `reply_to_message` (subject to Telegram availability), identifying an anchor, **not** the surrounding history.
+The Telegram Bot API cannot fetch arbitrary historic group messages. A bot must first be made able to observe new updates (administrator status or Privacy Mode disabled), then buffer only that group's explicitly enabled messages. History before observation is unavailable; an ordinary Reply may provide `reply_to_message`, not the surrounding history.
 
-To receive normal group messages, the bot must be a group administrator or have Group Privacy Mode disabled and be correctly re-added when required. The group should opt in explicitly to retained history; being able to receive messages is not itself consent to indefinitely archive them.
+**Ephemeral messages:** Bot API 10.2+ supports `BotCommand.is_ephemeral` for private group commands, `sendMessage` and `sendVoice` with `ephemeral_message_parameters`, and `editEphemeralMessageText` for mutable private status. The ephemeral response must be addressed to the initiating `receiver_user_id` (or use an authorized callback context) with the original `chat_id` and topic where applicable. Preserve `ephemeral_message_id` for edits and verify `Message.receiver_user` and ephemeral properties in live tests. Telegram does not guarantee that every ephemeral message/edit reaches an offline user; never infer delivery from an API success alone.
 
-Native voice delivery uses **`sendVoice`**, with a compatible synthesized file (prefer **OGG/Opus**), the original `chat_id`, the applicable `message_thread_id`, and `reply_parameters.message_id` identifying the user's invocation. Validate that the returned Telegram message has the voice-message form; a `sendAudio`, `sendDocument`, or URL response fails acceptance. Audio limits and encoding must be checked against the current Bot API contract.
+**Native voice:** upload OGG/Opus (preferred), or another format explicitly supported by Telegram `sendVoice`; use `sendVoice`, **not** `sendAudio` / `sendDocument`. A private voice carries the explicit caption `🔒 Приватно · Whisper` and `ephemeral_message_parameters`; a user-approved public voice carries `🔓 Для всіх · Whisper` and no ephemeral parameters. Verify the Bot API result is a `Message.voice`. Respect the current Telegram file-size limit and bounded audio duration.
 
-References: [Telegram Bot API](https://core.telegram.org/bots/api#sendvoice), [Message reply fields](https://core.telegram.org/bots/api#message), [Privacy Mode](https://core.telegram.org/bots/features#privacy-mode).
+**Regular mentions are public:** while the bot can answer a normal @mention ephemerally, the mention itself is posted to the group. Do not imply that such a flow meets the “private conversation” invariant. The user can invoke `/whisper` privately or open a private bot conversation instead.
+
+References: [Telegram Bot API — sendVoice](https://core.telegram.org/bots/api#sendvoice), [EphemeralMessageParameters](https://core.telegram.org/bots/api#ephemeralmessageparameters), [ephemeral message editing](https://core.telegram.org/bots/api#editephemeralmessagetext), [Telegram bot feature: two-way privacy](https://core.telegram.org/bots/features#ephemeral-messages), [Inline Mode](https://core.telegram.org/bots/inline).
 
 ## Proposed ownership and data flow
 
 ```text
-Telegram group/topic updates
-    -> prism-bot: verified webhook, update parsing, shared Telegram transport
-    -> bounded per-surface message buffer (focused port / adapter)
-    -> prism-hubot: Whisper command parsing + range selection + user copy
-    -> TTS port: chunked text synthesis (provider adapter, local or cloud)
-    -> prism-bot: Telegram sendVoice -> same chat/topic, reply to invocation
+Observed Telegram updates (opted-in group/topic)
+  -> prism-bot: verified webhook, Telegram surface + author addressing
+  -> bounded, opt-in per-surface message buffer
+  -> prism-hubot: ephemeral /whisper + private picker + author filtering
+  -> immutable anchor/selection snapshot
+  -> TTS port: bounded, provider-agnostic synthesis
+  -> prism-bot: ephemeral sendVoice, caption "🔒 Приватно · Whisper"
+  -> optional explicit confirmation -> public sendVoice in originating group/topic
 ```
 
-- **prism-hubot** owns the Whisper product workflow: vocabulary, anchor/range rules, author narration, configured limits, opt-in, and user-facing errors.
-- **prism-bot** owns reusable Telegram update ingestion, transport, message/reply/thread addressing, and a reusable voice-sending capability if it needs extending. Do not duplicate webhook processing or Telegram HTTP handling inside the product client.
-- **Message history buffer** is an explicit short-lived store keyed by `client_instance + chat_id + (message_thread_id|root)`. The current per-actor `FileInteractionStateStore` is **not** suitable as chat history: one surface contains many authors and needs separate retention and access controls. Use a dedicated bounded store; a shared store is required if horizontally scaling.
-- **TTS** is an injectable port. A cloud adapter may minimize CPU; a server-local engine can reduce variable provider charges. A mobile iPhone TTS engine cannot generate a voice message for a bot running on the server. Do not couple the client to one TTS vendor or treat the existing publication `voice profile` as proof of a speech-synthesis implementation.
-- **prism-hub** remains responsible for existing identity/lifecycle/authorization contracts. Only add a Hub API if a cross-client policy truly requires it. No raw private identity IDs, cross-product conversation content, or new shared publication workflow should leak into this client feature.
-- **Infrastructure** owns deploy, runtime secrets, resource limits, and operational configuration; this documentation does not authorize deployment.
+- **prism-hubot** owns Whisper intent, private selection UX, defaults, immutable range selection, explicit share consent and clear privacy markers.
+- **prism-bot** owns Telegram transport and the reusable ephemeral-message, edit, reply, callback, and native voice delivery ports. Do not bypass its public client composition by copying Telegram request handling.
+- **History buffer** is a dedicated store keyed by client instance + `chat_id` + topic. The existing per-actor `FileInteractionStateStore` is not group history; request state additionally keys the canonical actor and originating message/selection to prevent cross-user callback reuse.
+- **TTS** uses an injectable adapter; server-side generation is required for `sendVoice`. Mobile iPhone TTS does not supply bot-side audio. Keep provider credentials out of the client and never treat a pre-existing “voice profile” as proof of TTS implementation.
+- **prism-hub** continues to own existing actor/authorization boundaries; only add Hub contracts if shared policy truly requires them. Do not send private Bond IDs, chat excerpts or provider credentials into other products.
+- **Infrastructure** owns runtime constraints and deployment. This proposal changes no runtime and provides no permission to publish or deploy.
 
 ### Buffer and audio processing policy (proposed defaults)
 
@@ -71,7 +82,9 @@ Telegram group/topic updates
 - Retain **at most the last 100 eligible messages per surface**, for **up to 24 hours**; expire by both count and age. These are starting defaults, not existing deployed settings. Do not store message content in logs, analytics, or a global cross-chat cache.
 - Store only what is needed: message ID, chat ID, topic ID, timestamp, author display label, and text/caption. Avoid unnecessary provider identity metadata; protect persistence at rest and segregate tenants.
 - Handle duplicate/out-of-order Telegram updates idempotently; respect edit/delete notifications where Telegram actually supplies them, and document that Bot API does not guarantee every deletion event can be observed.
-- Restrict membership/permission to the originating group and preserve thread isolation; never fulfill a Reply that points outside the accessible surface. Apply a per-user/per-chat request rate limit and a total character/audio-duration cap.
+- Restrict selection and callbacks to the original requester, group and forum topic; never fulfill a Reply from another surface or let a forged callback change the speaker/target. Apply per-user/per-chat rate limits and a total character/audio-duration cap.
+- Store a frozen upper bound (invocation-time newest message ID) for every private selection; later arrivals cannot expand the generated voice range.
+- Mark **every** private user-facing picker, state update, error and voice as `🔒 Приватно · Whisper`; mark explicitly approved public audio `🔓 Для всіх · Whisper`. Include a permission/label assertion in integration tests.
 - Assemble deterministic, ordered text, trim unsupported markup, chunk at message/sentence boundaries, synthesize asynchronously with bounded concurrency, and stop producing more chunks when the request is canceled or times out.
 - If TTS is external, inform administrators that selected message text is sent to a third-party provider; apply data-retention controls and disable provider-side logging where the contract permits.
 - Avoid permanent storage of completed audio on the server. Delete temporary files when delivery succeeds or fails. Do not cache one group's output for another group.
@@ -79,18 +92,23 @@ Telegram group/topic updates
 
 ## Acceptance scenarios
 
-1. **Five messages:** after the bot has observed at least five eligible messages, a group member writes `@prism-hubot последние 5`. One native Telegram `voice` message is returned in reply to the invocation, with exactly those five authored messages read in oldest-to-newest order.
-2. **Older Reply anchor:** a member replies to an earlier eligible message with `@prism-hubot последние 10`. Voice narration ends with the selected earlier message, includes it once, and excludes all later chat messages.
-3. **Screen preset:** `@prism-hubot экран` uses the documented character/message preset, does not claim access to the user's actual phone viewport, and respects a Reply anchor if present.
-4. **Forum isolation:** identical requests in two topics never mix their buffered message history or send output to the wrong `message_thread_id`.
-5. **History gap:** if a request needs messages from before the bot joined or before retention began, a clear error is sent; no hallucinated or silently incomplete voice output.
-6. **Privacy:** a group without explicit opt-in is not buffered; an admin disable erases the stored buffer, and data from another chat is never readable via a Reply or command.
-7. **Transport check:** verify an actual Bot API `sendVoice` call and returned `Message.voice` from a Telegram test chat; simply generating an audio file does not pass.
-8. **Failure and bounds:** invalid N, unavailable reply target, TTS failure, deduplicated request, and exceeded provider/Telegram limits leave a recoverable state without leaking text or generating unintended duplicate voice messages.
-9. **Compatibility:** existing `/post`, `/publish`, `/status`, and other client interaction routes remain unchanged; Whisper does not inadvertently consume a pending publish-flow message.
+1. **Default privacy:** in an enabled supergroup, the user invokes ephemeral `/whisper`; only that user sees `🔒 Приватно · Whisper`, the message picker, progress updates and completed native Telegram `voice`.
+2. **One mutable status:** selection, synthesis and completion use the same ephemeral status message ID via edit methods, not successive public bot messages; the actual voice is sent separately.
+3. **Author filtering:** the picker lists snippets for `@username` or the union `@username @username_2`. Selected author identities are resolved to stable Telegram IDs, and displayed usernames are not used as persistent keys.
+4. **Selected start:** selecting an older message yields that message and all newer eligible filtered messages up to the fixed invocation-time snapshot, read oldest → newest; no unobserved or later-arriving messages are added.
+5. **Legacy reply-count:** `/whisper 10` in Reply reads the selected anchor and the 9 preceding eligible messages, not the newer picker-forward range. Both directions are explicit and tested.
+6. **Native transport:** verify a real `sendVoice` response includes `Message.voice` and the private recipient fields; no `sendAudio`, document or file-link fallback. Private voice caption clearly labels the audience.
+7. **Public sharing:** an explicit “Поділитися з усіма” and confirmation cause one properly labeled `🔓 Для всіх · Whisper` voice in the original group/topic; closing/canceling never produces public output.
+8. **No implicit leaks:** ephemeral transport error, TTS failure, stale callback, unknown @username or exceeded audio cap never emits private history/snippets/status as public group text.
+9. **Regular mention honesty:** a standard `@prism_hubot` query is recognized as public input and does not claim fully private invocation; private command path works independently of Telegram Inline Mode.
+10. **Telegram Inline Mode:** selecting public inline results cannot reveal buffered group history or be mistaken for a private picker; backend cannot infer chat ID from an inline query.
+11. **Isolation:** simultaneous requests from two users and different topics never mix state, audio, or callback permissions. Private audio cannot be shared into another chat through forged callback data.
+12. **Missing history, retention and compatibility:** unavailable older context reports a private error; opt-out clears buffered history; existing `/post`, `/status`, `/publish` and other handlers continue to work.
+
+Tests for ephemeral delivery/recipient labeling and explicit public share confirmation are mandatory before Whisper can be considered implemented.
 
 ## Delivery status
 
-This document is a **feature specification only**. Open implementation work remains: Telegram message observation and bounded history, group opt-in, reply-aware range parser, TTS port/adapter, shared native-voice sender, cost/rate controls, privacy tests, and live Telegram E2E. Do not mark Whisper implemented or deployed until the exact-head code, CI, and runtime behavior have been verified.
+This document is a **feature specification only**. Open implementation work remains: Telegram message observation and bounded history, group opt-in, private command/picker, author filters, reply and snapshot selection, TTS port/adapter, shared native-voice sender with ephemeral parameters, explicit share confirmation, cost/rate controls, privacy tests, and live Telegram E2E. Do not mark Whisper implemented or deployed until the exact-head code, CI, and runtime behavior have been verified.
 
 <!-- © 2026 aiaiaiai · aiaiaiai.org -->

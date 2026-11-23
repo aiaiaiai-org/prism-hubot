@@ -29,6 +29,10 @@ Telegram interaction state is scoped by client instance, chat ID, topic ID (or r
 
 Provider credentials never enter this client. Telegram identity evidence, human authorisation, social-account access, channels, and publication permissions are resolved server-side by Prism Hub.
 
+## Planned features
+
+- **[Whisper](docs/whisper.md)** (proposed, not yet implemented): reply-aware reading of the last N Telegram group messages as a native voice message in the originating chat/topic.
+
 ## Run locally
 
 Ruby `4.0.6` is pinned in `.ruby-version`.

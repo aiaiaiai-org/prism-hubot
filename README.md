@@ -29,6 +29,10 @@ Telegram interaction state is scoped by client instance, chat ID, topic ID (or r
 
 Provider credentials never enter this client. Telegram identity evidence, human authorisation, social-account access, channels, and publication permissions are resolved server-side by Prism Hub.
 
+## Planned features
+
+- **[Whisper](docs/whisper.md)** (proposed, not yet implemented): private-by-default, visibly labeled (`🔒 Приватно · Whisper`) Telegram message selection and native voice readback, with an optional **explicitly confirmed** public share (`🔓 Для всіх · Whisper`). The safe MVP uses ephemeral `/whisper` commands; normal `@prism_hubot` mentions and Telegram Inline Mode do not make a user's query private.
+
 ## Run locally
 
 Ruby `4.0.6` is pinned in `.ruby-version`.

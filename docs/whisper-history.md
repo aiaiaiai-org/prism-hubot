@@ -45,6 +45,23 @@ Single-narrator readback is literal: a message whose text imitates an author cue
 messages in between. Integration should keep author cues distinguishable from message
 text and may state that gaps exist.
 
-No command, collection, delivery, or admin flow is activated by this PR.
+## Activation and observation
+
+`/whisper` and `/whisper_off` are declared `is_ephemeral` in the command menu (`rake telegram:commands`).
+Only a chat administrator can switch Whisper on, and only when the bot is itself an administrator:
+the check uses `getChatMember` for the person who pressed the button, at press time, and a lookup
+Telegram does not confirm is a refusal. The consent step shows the disclosure privately, and on
+confirmation the bot first posts a **public** notice in the same chat or topic that message texts are
+being kept; if that notice cannot be posted, nothing is enabled. `/whisper_off` clears the history first
+and then announces it, best effort. State is process-local: a restart disables every chat.
+
+Ordinary group messages reach `History#observe` through a prism-bot observer: text or caption from
+human members, never commands, never ephemeral commands or button presses. The first sighting of a
+message is revision 1 and an edit carries the id of its own update. Display names become spoken
+author labels with control and invisible characters removed, falling back to the username and then to
+"Учасник". A message sent before enabling is never kept. A plain `/whisper` typed into a group is
+public, so the bot answers only with a hint and no group content; the message picker, synthesis and
+delivery are separate changes.
+
 
 <!-- © 2026 aiaiaiai · aiaiaiai.org -->

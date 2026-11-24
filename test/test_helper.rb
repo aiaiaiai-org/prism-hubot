@@ -108,9 +108,10 @@ module PrismHubotTestSupport
       @messages = []
     end
 
-    def send_message(chat_id:, text:, message_thread_id: nil)
+    def send_message(chat_id:, text:, message_thread_id: nil, location_request: nil, ephemeral: nil)
       message = {chat_id: chat_id, text: text}
       message[:message_thread_id] = message_thread_id if message_thread_id
+      message[:ephemeral] = ephemeral if ephemeral
       @messages << message
     end
   end
@@ -204,6 +205,32 @@ module PrismHubotTestSupport
       update: update,
       actor: actor
     )
+  end
+
+  def human_actor
+    PrismBot::Domain::HumanActor.new(canonical_id: "0x0sky", role: "owner")
+  end
+
+  # An ephemeral command as Telegram delivers it: marked with an ephemeral message id.
+  def private_update(text:, chat_id: -1001, user_id: 7, thread: nil, chat_type: "supergroup", ephemeral_message_id: 5)
+    message = {"message_id" => 0, "ephemeral_message_id" => ephemeral_message_id, "text" => text,
+               "chat" => {"id" => chat_id, "type" => chat_type}, "from" => {"id" => user_id, "is_bot" => false}}
+    message["message_thread_id"] = thread if thread
+    parsed = PrismBot::Channels::Telegram::UpdateParser.new.call({"update_id" => 42, "message" => message})
+    PrismBot::Channels::Telegram::AuthorizedUpdate.new(update: parsed, actor: human_actor)
+  end
+
+  # A button press on an ephemeral message (or a public one when source_ephemeral is nil).
+  def callback_update(data:, chat_id: -1001, user_id: 7, thread: nil, source_ephemeral: 8)
+    message = {"message_id" => source_ephemeral ? 0 : 99, "date" => 1_700_000_000,
+               "chat" => {"id" => chat_id, "type" => "supergroup"}}
+    message["ephemeral_message_id"] = source_ephemeral if source_ephemeral
+    message["message_thread_id"] = thread if thread
+    parsed = PrismBot::Channels::Telegram::UpdateParser.new.call(
+      {"update_id" => 43, "callback_query" => {"id" => "cb-1", "from" => {"id" => user_id, "is_bot" => false},
+                                               "data" => data, "message" => message}}
+    )
+    PrismBot::Channels::Telegram::AuthorizedUpdate.new(update: parsed, actor: human_actor)
   end
 
   def interaction_key(chat_id: 100, message_thread_id: nil)

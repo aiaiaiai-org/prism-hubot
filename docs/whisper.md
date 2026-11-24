@@ -109,6 +109,6 @@ Tests for ephemeral delivery/recipient labeling and explicit public share confir
 
 ## Delivery status
 
-This document is a **feature specification only**. Open implementation work remains: Telegram message observation and bounded history, group opt-in, private command/picker, author filters, reply and snapshot selection, TTS port/adapter, shared native-voice sender with ephemeral parameters, explicit share confirmation, cost/rate controls, privacy tests, and live Telegram E2E. Do not mark Whisper implemented or deployed until the exact-head code, CI, and runtime behavior have been verified.
+This document is the feature specification. Implemented so far (not deployed, not checked against live Telegram): bounded opt-in history, administrator-gated enable/disable with public disclosure, and group-message observation; see [whisper-history.md](whisper-history.md). Open implementation work remains: private message picker, author filters, reply and snapshot selection, TTS port/adapter, native-voice delivery wiring (the sender ports ship in prism-bot), explicit share confirmation, cost/rate controls, privacy tests, and live Telegram E2E. Do not mark Whisper implemented or deployed until the exact-head code, CI, and runtime behavior have been verified.
 
 <!-- © 2026 aiaiaiai · aiaiaiai.org -->

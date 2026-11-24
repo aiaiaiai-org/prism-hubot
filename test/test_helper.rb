@@ -86,6 +86,21 @@ module PrismHubotTestSupport
     end
   end
 
+  class ChatMemberLookup
+    def initialize(statuses: {}, own: "administrator")
+      @statuses = statuses
+      @own = own
+    end
+
+    def chat_membership(chat_id:, user_id:)
+      PrismBot::Domain::ChatMembership.new(chat_id: chat_id, user_id: user_id, status: @statuses.fetch(user_id, "member"))
+    end
+
+    def own_membership(chat_id:)
+      PrismBot::Domain::ChatMembership.new(chat_id: chat_id, user_id: 1, status: @own)
+    end
+  end
+
   class MessageSender
     attr_reader :messages
 
@@ -142,7 +157,8 @@ module PrismHubotTestSupport
 
   module_function
 
-  def services(message_sender:, publish_publication:, ephemeral_sender: EphemeralSender.new)
+  def services(message_sender:, publish_publication:, ephemeral_sender: EphemeralSender.new,
+    chat_members: ChatMemberLookup.new)
     PrismBot::Client::Services.new(
       instance_id: "prism-hubot",
       default_channel_ids: ["personal-threads"],
@@ -152,6 +168,7 @@ module PrismHubotTestSupport
       message_sender: message_sender,
       ephemeral_message_sender: ephemeral_sender,
       voice_sender: ephemeral_sender,
+      chat_member_lookup: chat_members,
       list_channels: ListChannels.new,
       publish_publication: publish_publication,
       bot_lifecycle: BotLifecycle.new

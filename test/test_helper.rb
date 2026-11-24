@@ -50,6 +50,42 @@ module PrismHubotTestSupport
     end
   end
 
+  # Records private (ephemeral) sends, edits and voice deliveries.
+  class EphemeralSender
+    attr_reader :sent, :edits, :voices
+
+    def initialize
+      @sent = []
+      @edits = []
+      @voices = []
+    end
+
+    def send_ephemeral_message(target:, text:, reply_markup: nil)
+      @sent << {target: target, text: text, reply_markup: reply_markup}
+      PrismBot::Domain::EphemeralMessageRef.new(
+        chat_id: target.chat_id, receiver_user_id: target.receiver_user_id, ephemeral_message_id: @sent.length
+      )
+    end
+
+    def edit_ephemeral_message(ref:, text:, reply_markup: nil)
+      @edits << {ref: ref, text: text, reply_markup: reply_markup}
+      nil
+    end
+
+    def send_ephemeral_voice(target:, clip:, caption:)
+      @voices << {target: target, clip: clip, caption: caption}
+      ref = PrismBot::Domain::EphemeralMessageRef.new(
+        chat_id: target.chat_id, receiver_user_id: target.receiver_user_id, ephemeral_message_id: 900 + @voices.length
+      )
+      PrismBot::Domain::VoiceReceipt.new(file_id: "voice-file", ephemeral_ref: ref)
+    end
+
+    def send_public_voice(chat_id:, clip:, caption:, message_thread_id: nil)
+      @voices << {chat_id: chat_id, message_thread_id: message_thread_id, clip: clip, caption: caption}
+      PrismBot::Domain::VoiceReceipt.new(file_id: "voice-file", message_id: 700 + @voices.length)
+    end
+  end
+
   class MessageSender
     attr_reader :messages
 
@@ -106,7 +142,7 @@ module PrismHubotTestSupport
 
   module_function
 
-  def services(message_sender:, publish_publication:)
+  def services(message_sender:, publish_publication:, ephemeral_sender: EphemeralSender.new)
     PrismBot::Client::Services.new(
       instance_id: "prism-hubot",
       default_channel_ids: ["personal-threads"],
@@ -114,6 +150,8 @@ module PrismHubotTestSupport
       default_voice_profile: "0x0sky.uk_SP",
       dispatch_policy: "require_all_valid",
       message_sender: message_sender,
+      ephemeral_message_sender: ephemeral_sender,
+      voice_sender: ephemeral_sender,
       list_channels: ListChannels.new,
       publish_publication: publish_publication,
       bot_lifecycle: BotLifecycle.new

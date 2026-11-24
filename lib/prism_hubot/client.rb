@@ -3,10 +3,13 @@
 module PrismHubot
   class Client
     # history is process-local: nothing is retained across a restart, and every chat starts disabled.
-    def initialize(state_store:, presenter: Presenter.new, history: Whisper::History.new)
+    def initialize(state_store:, presenter: Presenter.new, history: Whisper::History.new,
+      sessions: Whisper::Sessions.new, picker_view: Whisper::PickerView.new)
       @state_store = state_store
       @presenter = presenter
       @history = history
+      @sessions = sessions
+      @picker_view = picker_view
     end
 
     def call(services)
@@ -27,7 +30,7 @@ module PrismHubot
           "whisper" => whisper.fetch(:command),
           "whisper_off" => whisper.fetch(:off)
         },
-        callback_handlers: {"wa" => whisper.fetch(:activation)},
+        callback_handlers: {"wa" => whisper.fetch(:activation), "wp" => whisper.fetch(:picker)},
         observers: [Whisper::Observer.new(history: @history)],
         state_handlers: {
           "awaiting_post_content" => await_post_content
@@ -45,8 +48,12 @@ module PrismHubot
         message_sender: services.message_sender, ephemeral_sender: services.ephemeral_message_sender
       )
       shared = {history: @history, access: access, responder: responder}
+      flow = Whisper::PickerFlow.new(
+        history: @history, sessions: @sessions, view: @picker_view, responder: responder
+      )
       {
-        command: Handlers::WhisperCommand.new(**shared),
+        command: Handlers::WhisperCommand.new(**shared, flow: flow),
+        picker: Handlers::WhisperPicker.new(flow: flow, responder: responder),
         off: Handlers::WhisperOff.new(**shared),
         activation: Handlers::WhisperActivation.new(**shared)
       }

@@ -60,8 +60,27 @@ human members, never commands, never ephemeral commands or button presses. The f
 message is revision 1 and an edit carries the id of its own update. Display names become spoken
 author labels with control and invisible characters removed, falling back to the username and then to
 "Учасник". A message sent before enabling is never kept. A plain `/whisper` typed into a group is
-public, so the bot answers only with a hint and no group content; the message picker, synthesis and
-delivery are separate changes.
+public, so the bot answers only with a hint and no group content.
+
+## Picker
+
+Where Whisper is on, an ephemeral `/whisper` opens a private list of the kept messages, newest first,
+five per page, each as `n. <age> · <author>: <snippet>` (a snippet is at most 40 characters, with
+control and invisible characters removed and whitespace collapsed). Arguments: `@author` (several
+allowed; the union of their messages), a number 1-50 (only that many newest messages), and `екран`
+(the 20-message / 2000-character preset). Anything else is refused with the usage text; nothing is
+guessed. Opening the list takes the fixed snapshot from `History#snapshot`.
+
+The list belongs to the person who opened it: a process-local session keyed by chat, topic and
+person (at most 200, expiring with the 10-minute snapshot) holds the snapshot references, never
+text. Page, choose and cancel are `wp:p:<page>`, `wp:s:<message id>` and `wp:x` callbacks; the data
+is untrusted and anything but exactly those shapes is ignored. Pages and the result edit the same
+private message. Choosing a message checks the range with `History#select` (the chosen message and
+every newer one in the filtered snapshot, at most 50 messages and 4,000 characters, never silently
+cut) and records only the anchor. An edit, expiry, deletion or opt-out makes the list stale and the
+person is asked to run `/whisper` again. The reply-count form (`/whisper 10` as a reply) is not
+available yet, because prism-bot does not expose the replied-to message. Synthesis and delivery are
+separate changes: the range is read from the history again and revalidated when it is synthesized.
 
 
 <!-- © 2026 aiaiaiai · aiaiaiai.org -->

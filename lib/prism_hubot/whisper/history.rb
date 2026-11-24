@@ -67,6 +67,17 @@ module PrismHubot
         nil
       end
 
+      # :enabled, :disabled_overflow (stopped after too many deletions, until an administrator enables
+      # it again) or :not_enabled. It reveals no content.
+      def status(chat_id:, topic_id: nil)
+        key = surface(chat_id, topic_id)
+        @lock.synchronize do
+          next :enabled if @surfaces.key?(key)
+
+          @overflowed.key?(key) ? :disabled_overflow : :not_enabled
+        end
+      end
+
       def observe(chat_id:, topic_id: nil, id:, revision:, timestamp:, author_id:, label:, username: nil, text:)
         key = surface(chat_id, topic_id)
         @lock.synchronize do

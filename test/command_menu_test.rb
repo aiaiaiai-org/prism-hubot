@@ -44,4 +44,12 @@ class CommandMenuTest < Minitest::Test
     assert_equal PrismHubot::CommandMenu::ENTRIES.length, payload.length
     assert_equal %w[command description], payload.first.keys
   end
+
+  def test_whisper_commands_are_declared_ephemeral_and_nothing_else_is
+    payload = PrismHubot::CommandMenu.telegram_commands
+    ephemeral = payload.select { _1["is_ephemeral"] }.map { _1["command"] }
+
+    assert_equal %w[whisper whisper_off], ephemeral
+    payload.reject { _1["is_ephemeral"] }.each { |command| refute_includes command.keys, "is_ephemeral" }
+  end
 end

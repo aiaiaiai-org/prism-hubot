@@ -26,7 +26,10 @@ module PrismHubot
       MAX_MESSAGES = 100
       MAX_AGE = 86_400
       MAX_SURFACES = 100
-      MAX_TEXT = 10_000
+      # Telegram limits text to 4096 characters; narration is capped lower so a
+      # selection fits the speech service's duration limit (about 4,000 characters).
+      MAX_TEXT = 4_096
+      MAX_NARRATION = 4_000
       MAX_LABEL = 128
       MAX_SNAPSHOT_AGE = 600
       MAX_TOMBSTONES = 200
@@ -35,6 +38,7 @@ module PrismHubot
         @clock = clock
         @lock = Mutex.new
         @surfaces = {}
+        @overflowed = {}
       end
 
       def inspect
@@ -47,12 +51,19 @@ module PrismHubot
           return if @surfaces.key?(key)
           raise Refusal, "surface_capacity" if @surfaces.size >= MAX_SURFACES
 
-          @surfaces[key] = {epoch: SecureRandom.hex(16), entries: {}, deleted: {}, floor: 0}
+          @overflowed.delete(key)
+          # Nothing sent before this moment is eligible, including later edits of it.
+          @surfaces[key] = {epoch: SecureRandom.hex(16), entries: {}, deleted: {}, floor: 0,
+                            enabled_at: @clock.call}
         end
       end
 
       def disable(chat_id:, topic_id: nil)
-        @lock.synchronize { @surfaces.delete(surface(chat_id, topic_id)) }
+        key = surface(chat_id, topic_id)
+        @lock.synchronize do
+          @surfaces.delete(key)
+          @overflowed.delete(key)
+        end
         nil
       end
 
@@ -66,8 +77,9 @@ module PrismHubot
           prune(state, now)
           return false unless positive?(id) && positive?(revision) && positive?(author_id)
           return false unless timestamp.is_a?(Integer) && timestamp <= now && timestamp > now - MAX_AGE
+          return false if timestamp < state[:enabled_at]
           return false if id <= state[:floor] || state[:deleted].key?(id)
-          return false unless valid_string?(text, MAX_TEXT) && valid_string?(label, MAX_LABEL)
+          return false unless valid_string?(text, MAX_TEXT) && valid_label?(label)
           return false unless username.nil? || (valid_string?(username, 64) && /\A[A-Za-z0-9_]+\z/.match?(username))
 
           old = state[:entries][id]
@@ -95,8 +107,11 @@ module PrismHubot
           state[:entries].delete(id)
           state[:deleted][id] = true
           if state[:deleted].size > MAX_TOMBSTONES
-            # Fail closed instead of discarding deletion evidence.
+            # Fail closed instead of discarding deletion evidence. The marker keeps
+            # the cause distinguishable until an administrator enables it again.
             @surfaces.delete(key)
+            @overflowed[key] = true
+            @overflowed.shift while @overflowed.size > MAX_SURFACES
           end
         end
         nil
@@ -109,7 +124,7 @@ module PrismHubot
         raise Refusal, "invalid_actor" unless positive?(actor)
 
         @lock.synchronize do
-          state = @surfaces[key] || raise(Refusal, "not_enabled")
+          state = @surfaces[key] || raise(Refusal, @overflowed.key?(key) ? "disabled_overflow" : "not_enabled")
           now = @clock.call
           prune(state, now)
           entries = state[:entries].values.sort_by(&:id)
@@ -160,7 +175,7 @@ module PrismHubot
             entries = entries[index..]
           end
           limit = screen ? 20 : 50
-          characters = screen ? 2_000 : MAX_TEXT
+          characters = screen ? 2_000 : MAX_NARRATION
           raise Refusal, "range_limit" if entries.size > limit || narrate(entries).length > characters
 
           entries.freeze
@@ -184,6 +199,11 @@ module PrismHubot
 
       def valid_string?(value, maximum)
         value.is_a?(String) && value.valid_encoding? && !value.strip.empty? && value.length <= maximum
+      end
+
+      # Labels are spoken as author cues: no line breaks, control or invisible characters.
+      def valid_label?(value)
+        valid_string?(value, MAX_LABEL) && !value.match?(/[[:cntrl:]\u200B-\u200F\u2028-\u202E\u2060-\u2064\uFEFF]/)
       end
 
       def surface(chat_id, topic_id)

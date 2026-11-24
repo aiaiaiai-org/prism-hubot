@@ -10,9 +10,10 @@ class WhisperHistoryTest < Minitest::Test
     @surface = {chat_id: -100, topic_id: 7}
   end
 
-  def observe(id, author: 1, username: "one", text: "message #{id}", revision: id, **surface)
-    @history.observe(**@surface.merge(surface), id:, revision:, timestamp: @now,
-      author_id: author, label: "User #{author}", username:, text:)
+  def observe(id, author: 1, username: "one", text: "message #{id}", revision: id,
+    timestamp: @now, label: "User #{author}", **surface)
+    @history.observe(**@surface.merge(surface), id:, revision:, timestamp:,
+      author_id: author, label:, username:, text:)
   end
 
   def snapshot(**options)
@@ -91,9 +92,47 @@ class WhisperHistoryTest < Minitest::Test
 
   def test_ambiguous_handle_and_character_cap
     @history.enable(**@surface)
-    observe(1, text: "x" * 10_000)
+    observe(1, text: "x" * 4_096)
     observe(2, author: 2)
     assert_raises(PrismHubot::Whisper::Refusal) { snapshot(usernames: ["one"]) }
     assert_raises(PrismHubot::Whisper::Refusal) { select(snapshot, anchor: 1) }
+  end
+
+  def test_messages_sent_before_enable_stay_ineligible_even_when_edited_later
+    @history.enable(**@surface)
+    refute observe(1, timestamp: @now - 1)
+    assert observe(2)
+    assert_raises(PrismHubot::Whisper::Refusal) { select(snapshot(usernames: ["one"]), anchor: 1) }
+  end
+
+  def test_text_beyond_telegram_limit_is_not_retained
+    @history.enable(**@surface)
+    refute observe(1, text: "x" * 4_097)
+    assert observe(2, text: "x" * 4_096)
+  end
+
+  def test_labels_with_control_or_invisible_characters_are_rejected
+    @history.enable(**@surface)
+    ["Ann\nBob", "Ann\u202EBob", "Ann\u200BBob"].each_with_index do |label, index|
+      refute observe(index + 1, label:)
+    end
+    assert observe(10, label: "Ann Bob")
+  end
+
+  def test_tombstone_overflow_disables_surface_with_a_distinct_refusal
+    @history.enable(**@surface)
+    assert observe(1)
+    201.times { |i| @history.forget(**@surface, id: i + 1) }
+    refute observe(500)
+    error = assert_raises(PrismHubot::Whisper::Refusal) { snapshot }
+    assert_equal "disabled_overflow", error.message
+    @history.enable(**@surface)
+    assert observe(600)
+    assert_equal [600], @history.picker(snapshot, **@surface, actor: 9).map(&:id)
+  end
+
+  def test_disabled_surface_reports_not_enabled
+    error = assert_raises(PrismHubot::Whisper::Refusal) { snapshot }
+    assert_equal "not_enabled", error.message
   end
 end

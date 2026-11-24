@@ -50,7 +50,7 @@ class WhisperActivationTest < Minitest::Test
       message_sender: @sender, publish_publication: PublishPublication.new,
       ephemeral_sender: @private, chat_members: members
     )
-    @composition = PrismHubot::Client.new(state_store: MemoryStateStore.new, history: @history).call(services)
+    @composition = PrismHubot::Client.new(state_store: MemoryStateStore.new, history: @history, sessions: PrismHubot::Whisper::Sessions.new(clock: -> { @now })).call(services)
     @callbacks = PrismBot::Channels::Telegram::CallbackRouter.new(handlers: @composition.callback_handlers)
   end
 
@@ -165,16 +165,13 @@ class WhisperActivationTest < Minitest::Test
     assert_equal :callback, @sender.messages.fetch(0)[:ephemeral].mode
   end
 
-  def test_when_enabled_whisper_reports_ready_and_collects_group_messages
+  def test_when_enabled_whisper_collects_group_messages_for_the_picker
     press(callback_update(data: "wa:on"))
-    @sender.messages.clear
     observe(id: 301, text: "Привіт усім")
     observe(id: 302, text: "/help", command: true)
 
-    command("whisper", private_update(text: "/whisper"))
-
-    assert_equal [PrismHubot::Copy::WHISPER_READY], @sender.messages.map { _1[:text] }
     snapshot = @history.snapshot(chat_id: CHAT, actor: 9)
+
     assert_equal [[301, 1]], snapshot.references
   end
 

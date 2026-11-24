@@ -34,11 +34,19 @@ module PrismHubot
       end
 
       # The pressed button sits on an ephemeral message: edit it in place instead of adding another.
-      def settle(update, text)
+      def settle(update, text, keyboard: nil)
         ref = update.source_ephemeral_ref
-        return @message_sender.send_message(**update.reply_target, text: text) unless ref
+        if ref
+          return @ephemeral_sender.edit_ephemeral_message(ref: ref, text: text, reply_markup: keyboard)
+        end
+        return reply(update, text, keyboard: keyboard) if keyboard
 
-        @ephemeral_sender.edit_ephemeral_message(ref: ref, text: text)
+        @message_sender.send_message(**update.reply_target, text: text)
+      end
+
+      def refuse(update, reason, settle: false)
+        text = "#{Copy::PRIVATE}\n#{Copy::WHISPER_REFUSALS.fetch(reason, Copy::WHISPER_REFUSAL_FALLBACK)}"
+        settle ? self.settle(update, text) : reply(update, text)
       end
 
       # A deliberate public message, to the same chat and topic and never ephemeral.

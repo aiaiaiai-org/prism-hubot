@@ -8,6 +8,9 @@ module PrismHubot
     # session, so a press can never act on someone else's list.
     class PickerFlow
       MAX_LIMIT = 50
+      # With no number the list shows the newest ten of whoever was asked for; a number (1-50) is the most
+      # messages of the union of the chosen authors, never per author, and `екран` keeps its own preset.
+      DEFAULT_LIMIT = 10
       HANDLE = /\A@[A-Za-z0-9_]{1,64}\z/
       SCREEN = %w[екран screen].freeze
 
@@ -107,7 +110,7 @@ module PrismHubot
             return nil
           end
         end
-        Request.new(usernames: usernames.uniq, limit: limit, screen: screen)
+        Request.new(usernames: usernames.uniq, limit: limit || (DEFAULT_LIMIT unless screen), screen: screen)
       end
     end
   end

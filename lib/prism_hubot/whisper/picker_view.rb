@@ -5,7 +5,7 @@ module PrismHubot
     # Renders one page of the private message list: a short, safe snippet per message, newest first.
     # Content is only ever shown in a private message, and only as far as a snippet.
     class PickerView
-      PAGE_SIZE = 5
+      PAGE_SIZE = 10
       SNIPPET = 40
       AUTHOR = 16
       UNSAFE = /[[:cntrl:]​-‏ -‮⁠-⁤﻿]/

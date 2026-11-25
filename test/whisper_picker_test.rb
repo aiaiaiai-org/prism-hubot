@@ -110,12 +110,13 @@ class WhisperPickerTest < Minitest::Test
     assert_includes @sender.messages.fetch(0)[:text], PrismHubot::Copy::WHISPER_REFUSALS.fetch("unresolved_author")
   end
 
-  def test_pages_of_five_with_navigation_that_edits_the_same_message
-    (1..7).each { |id| say(id, "повідомлення #{id}", at: @now - 100 + id) }
+  def test_pages_of_ten_with_navigation_that_edits_the_same_message
+    (1..12).each { |id| say(id, "повідомлення #{id}", at: @now - 100 + id) }
 
-    whisper
+    whisper("50")
     assert_includes listing[:text], "Сторінка 1/2."
-    assert_equal %w[wp:s:7 wp:s:6 wp:s:5 wp:s:4 wp:s:3 wp:p:2 wp:x], listing[:reply_markup].rows.flatten.map(&:callback_data)
+    assert_equal %w[wp:s:12 wp:s:11 wp:s:10 wp:s:9 wp:s:8 wp:s:7 wp:s:6 wp:s:5 wp:s:4 wp:s:3 wp:p:2 wp:x],
+      listing[:reply_markup].rows.flatten.map(&:callback_data)
 
     press("wp:p:2")
     assert_includes edited[:text], "Сторінка 2/2."
@@ -123,6 +124,36 @@ class WhisperPickerTest < Minitest::Test
     assert_equal 8, edited[:ref].ephemeral_message_id
     press("wp:p:99")
     assert_includes edited[:text], "Сторінка 2/2."
+  end
+
+  def test_with_no_number_the_list_is_the_newest_ten_and_choosing_reads_that_one_and_everything_newer
+    (1..12).each { |id| say(id, "повідомлення #{id}", at: @now - 100 + id) }
+
+    whisper
+
+    assert_includes listing[:text], "Сторінка 1/1."
+    assert_equal %w[wp:s:12 wp:s:11 wp:s:10 wp:s:9 wp:s:8 wp:s:7 wp:s:6 wp:s:5 wp:s:4 wp:s:3 wp:x],
+      listing[:reply_markup].rows.flatten.map(&:callback_data)
+
+    press("wp:s:3")
+    # messages 3..12 by one author: "Ада: повідомлення 3" then nine more lines, each with a newline
+    assert_equal format(PrismHubot::Copy::WHISPER_CHOSEN, count: 10, characters: 19 + 6 * 15 + 3 * 16), edited[:text]
+  end
+
+  def test_a_number_is_the_total_over_all_the_chosen_authors_not_per_author
+    (1..6).each do |index|
+      say(index * 2 - 1, "а#{index}", author: 1, username: "ada", at: @now - 100 + index * 2 - 1)
+      say(index * 2, "б#{index}", author: 2, name: "Борис", username: "boris", at: @now - 100 + index * 2)
+    end
+
+    whisper("@ada @boris 4")
+    assert_equal %w[wp:s:12 wp:s:11 wp:s:10 wp:s:9 wp:x], listing[:reply_markup].rows.flatten.map(&:callback_data)
+
+    whisper("@ada 3")
+    assert_equal %w[wp:s:11 wp:s:9 wp:s:7 wp:x], listing[:reply_markup].rows.flatten.map(&:callback_data)
+
+    whisper("@ada @boris 50")
+    assert_includes listing[:text], "Сторінка 1/2."
   end
 
   def test_choosing_fixes_the_start_and_reports_the_size_of_the_range

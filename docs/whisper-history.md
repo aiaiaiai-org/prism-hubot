@@ -66,9 +66,9 @@ public, so the bot answers only with a hint and no group content.
 ## Picker
 
 Where Whisper is on, an ephemeral `/whisper` opens a private list of the kept messages, newest first,
-five per page, each as `n. <age> · <author>: <snippet>` (a snippet is at most 40 characters, with
+ten per page, each as `n. <age> · <author>: <snippet>` (a snippet is at most 40 characters, with
 control and invisible characters removed and whitespace collapsed). Arguments: `@author` (several
-allowed; the union of their messages), a number 1-50 (only that many newest messages), and `екран`
+allowed; the union of their messages), a number 1-50 (at most that many of the newest messages in total, over all the chosen authors together, not per author; with no number the list is the newest ten), and `екран`
 (the 20-message / 2000-character preset). Anything else is refused with the usage text; nothing is
 guessed. Opening the list takes the fixed snapshot from `History#snapshot`.
 

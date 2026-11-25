@@ -1,7 +1,15 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 
 module PrismHubot
+  # Prism Hubot is a Whisper bot: four commands and nothing else. /start and /stop are for a group's
+  # administrators and creator, /whisper and /whisper_private for every member once Whisper is on.
+  # All four are open commands (prism-bot): nobody needs a Hub identity to use them, and each handler
+  # decides from Telegram's own member status what its sender may do. Every other message and command
+  # is ignored, and the Hub-backed commands of prism-bot's default client (posting, publishing,
+  # channels, bot status) are not part of this client.
   class Client
+    COMMANDS = %w[start stop whisper whisper_private].freeze
+
     # history is process-local: nothing is retained across a restart, and every chat starts disabled.
     # speech is a Speech::Voice, or nil when text-to-speech is not configured: Whisper then lists and
     # chooses messages but says that voice is not available.
@@ -9,39 +17,30 @@ module PrismHubot
       sessions: Whisper::Sessions.new, picker_view: Whisper::PickerView.new, speech: nil, executor: nil,
       logger: Logger.new($stderr))
       @state_store = state_store
-      @speech = speech
-      @executor = executor
-      @logger = logger
       @presenter = presenter
       @history = history
       @sessions = sessions
       @picker_view = picker_view
+      @speech = speech
+      @executor = executor
+      @logger = logger
     end
 
     def call(services)
-      base = PrismBot::Client::Default.new(presenter: @presenter).call(services)
-      begin_post = Handlers::BeginPost.new(message_sender: services.message_sender)
-      cancel = Handlers::Cancel.new(message_sender: services.message_sender)
-      await_post_content = Handlers::AwaitPostContent.new(
-        publish_handler: base.command_handlers.fetch("publish"),
-        message_sender: services.message_sender
-      )
-
       whisper = whisper_handlers(services)
 
-      base.with(
+      PrismBot::Client::Composition.new(
         command_handlers: {
-          "post" => begin_post,
-          "cancel" => cancel,
-          "whisper" => whisper.fetch(:command),
-          "whisper_off" => whisper.fetch(:off)
+          "start" => whisper.fetch(:start),
+          "stop" => whisper.fetch(:stop),
+          "whisper" => whisper.fetch(:public),
+          "whisper_private" => whisper.fetch(:private)
         },
-        callback_handlers: {"wa" => whisper.fetch(:activation), "wp" => whisper.fetch(:picker)},
+        open_commands: COMMANDS,
+        callback_handlers: {"wp" => whisper.fetch(:picker)},
         observers: [Whisper::Observer.new(history: @history)],
-        state_handlers: {
-          "awaiting_post_content" => await_post_content
-        },
-        fallback: Fallback.new(begin_post: begin_post, fallback: base.fallback),
+        fallback: ->(update:, arguments:) { },
+        presenter: @presenter,
         state_store: @state_store
       )
     end
@@ -62,16 +61,17 @@ module PrismHubot
       responder = Whisper::Responder.new(
         message_sender: services.message_sender, ephemeral_sender: services.ephemeral_message_sender
       )
-      shared = {history: @history, access: access, responder: responder}
       flow = Whisper::PickerFlow.new(
         history: @history, sessions: @sessions, view: @picker_view, responder: responder,
         speaker: speaker(services, responder)
       )
+      shared = {history: @history, responder: responder}
       {
-        command: Handlers::WhisperCommand.new(**shared, flow: flow),
-        picker: Handlers::WhisperPicker.new(flow: flow, responder: responder),
-        off: Handlers::WhisperOff.new(**shared),
-        activation: Handlers::WhisperActivation.new(**shared)
+        start: Handlers::WhisperStart.new(**shared, access: access),
+        stop: Handlers::WhisperStop.new(**shared, access: access),
+        public: Handlers::WhisperCommand.new(**shared, flow: flow, visibility: :public),
+        private: Handlers::WhisperCommand.new(**shared, flow: flow, visibility: :private),
+        picker: Handlers::WhisperPicker.new(flow: flow, responder: responder)
       }
     end
   end

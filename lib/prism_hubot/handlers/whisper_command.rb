@@ -2,17 +2,16 @@
 
 module PrismHubot
   module Handlers
-    # /whisper, sent as an ephemeral command. Where Whisper is on it opens the private message list;
-    # where it is off it says so and, for an administrator, offers to switch it on.
+    # /whisper and /whisper_private, sent as ephemeral commands by any member. Where Whisper is on they
+    # open the same private message list; the visibility decides who hears the result: everyone in the
+    # group (:public) or only the person who asked (:private). Where Whisper is off they say so: only an
+    # administrator's /start switches it on.
     class WhisperCommand
-      ENABLE_DATA = "wa:on".freeze
-      CANCEL_DATA = "wa:no".freeze
-
-      def initialize(history:, access:, responder:, flow:)
+      def initialize(history:, responder:, flow:, visibility:)
         @history = history
-        @access = access
         @responder = responder
         @flow = flow
+        @visibility = visibility
       end
 
       def call(update:, arguments:)
@@ -21,29 +20,10 @@ module PrismHubot
 
         surface = update.surface_context
         case @history.status(chat_id: surface.chat_id, topic_id: surface.message_thread_id)
-        when :enabled then @flow.start(update, arguments)
-        when :disabled_overflow then offer(update, Copy::WHISPER_OVERFLOW)
-        else offer(update, Copy::WHISPER_NOT_ENABLED)
+        when :enabled then @flow.start(update, arguments, visibility: @visibility)
+        when :disabled_overflow then @responder.reply(update, Copy::WHISPER_OVERFLOW)
+        else @responder.reply(update, Copy::WHISPER_NOT_ENABLED)
         end
-      end
-
-      private
-
-      # Only an administrator is shown the consent buttons; the press is checked again regardless.
-      def offer(update, refusal)
-        case @access.check(chat_id: update.chat_id, user_id: update.user_id)
-        when :ok then @responder.reply(update, Copy::WHISPER_ENABLE_DISCLOSURE, keyboard: keyboard)
-        when :bot_not_admin then @responder.reply(update, Copy::WHISPER_BOT_NOT_ADMIN)
-        when :unconfirmed then @responder.reply(update, Copy::WHISPER_UNCONFIRMED)
-        else @responder.reply(update, refusal)
-        end
-      end
-
-      def keyboard
-        PrismBot::Domain::InlineKeyboard.new(rows: [[
-          {text: Copy::WHISPER_ENABLE_BUTTON, callback_data: ENABLE_DATA},
-          {text: Copy::WHISPER_CANCEL_BUTTON, callback_data: CANCEL_DATA}
-        ]])
       end
     end
   end

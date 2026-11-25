@@ -4,6 +4,14 @@
 
 Whisper lets a group member select an existing message or a range of messages and get **a native Telegram voice message visible only to that member by default**. This is literal text-to-speech readback, not summarization or transcription, and requires no LLM. **A public group voice message is a separate opt-in share action, never a default effect.**
 
+> **Command model (decided later than the rest of this specification, and it wins where they differ).**
+> Four ephemeral commands, no Hub identity needed: `/start` and `/stop` (group administrators and creator only)
+> switch Whisper on and off for a group or topic; after `/start`, every member has `/whisper` (the voice goes to
+> **everyone** in the group, labelled `🔓 Для всіх · Whisper`) and `/whisper_private` (the voice goes only to the
+> person, labelled `🔒 Приватно · Whisper`). The picker is private for both; choosing `/whisper` is the
+> deliberate public act, so there is no separate "Поділитися з усіма" confirmation. The consent buttons and
+> `/whisper_off` described below were replaced by `/start` and `/stop`. See the [README](../README.md).
+
 The product name **Whisper** does not imply integration with OpenAI's Whisper speech-to-text model: this feature needs **text-to-speech (TTS)**.
 
 ## Privacy and product invariants

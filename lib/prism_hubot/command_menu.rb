@@ -1,13 +1,17 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 
 module PrismHubot
-  # Single source of truth for the client command surface: the Telegram command
-  # menu (`setMyCommands`) and the `/help` copy are both rendered from it, so the
-  # two cannot drift.
+  # Single source of truth for the client command surface: the Telegram command menus
+  # (`setMyCommands`, one list per scope) and the help copy are rendered from it, so they cannot drift.
+  #
+  # There are four commands. /start and /stop switch Whisper on and off for a group or topic and are
+  # for its administrators and creator only; /whisper and /whisper_private are for every member, once
+  # Whisper has been started, and differ in who hears the result. The menu shows /start and /stop only
+  # to administrators; the handlers check Telegram's own member status regardless of the menu.
   module CommandMenu
     # An ephemeral command is delivered by Telegram only to the bot, invisible to the group.
-    Entry = Data.define(:command, :description, :ephemeral) do
-      def initialize(command:, description:, ephemeral: false)
+    Entry = Data.define(:command, :description, :ephemeral, :administrators_only) do
+      def initialize(command:, description:, ephemeral: false, administrators_only: false)
         super
       end
     end
@@ -17,29 +21,48 @@ module PrismHubot
     MAX_ENTRIES = 100
 
     ENTRIES = [
-      Entry.new(command: "start", description: "підключити себе до Prism"),
-      Entry.new(command: "context", description: "показати поточний Telegram-контекст"),
-      Entry.new(command: "post", description: "створити допис у два кроки"),
-      Entry.new(command: "cancel", description: "скасувати поточну дію"),
-      Entry.new(command: "channels", description: "доступні канали"),
-      Entry.new(command: "status", description: "поточний стан бота"),
-      Entry.new(command: "stop", description: "призупинити бота для себе"),
-      Entry.new(command: "resume", description: "відновити бота"),
-      Entry.new(command: "publish", description: "швидка публікація у типові канали"),
-      Entry.new(command: "whisper", description: "приватно озвучити повідомлення групи", ephemeral: true),
-      Entry.new(command: "whisper_off", description: "вимкнути Whisper у групі (адміністратор)", ephemeral: true),
-      Entry.new(command: "help", description: "список команд")
+      Entry.new(command: "start", description: "увімкнути Whisper у цій групі (адміністратор)",
+        ephemeral: true, administrators_only: true),
+      Entry.new(command: "stop", description: "вимкнути Whisper і стерти збережені тексти (адміністратор)",
+        ephemeral: true, administrators_only: true),
+      Entry.new(command: "whisper", description: "озвучити повідомлення для всіх у групі", ephemeral: true),
+      Entry.new(command: "whisper_private", description: "озвучити повідомлення лише для себе", ephemeral: true)
+    ].freeze
+
+    # Where each list is shown. A more specific scope replaces the default one, so administrators get
+    # all four; everyone else in a group gets the two for members; private chats get none, because
+    # Whisper reads groups.
+    SCOPES = [
+      {scope: {"type" => "default"}, administrators_only: false},
+      {scope: {"type" => "all_chat_administrators"}, administrators_only: nil},
+      {scope: {"type" => "all_private_chats"}, none: true}
     ].freeze
 
     module_function
 
-    # Payload accepted by the Telegram Bot API `setMyCommands` method.
-    def telegram_commands
-      ENTRIES.map do |entry|
+    # Payload accepted by the Telegram Bot API `setMyCommands` method, for the default scope.
+    def telegram_commands(entries = member_entries)
+      entries.map do |entry|
         command = {"command" => entry.command, "description" => entry.description}
         command["is_ephemeral"] = true if entry.ephemeral
         command
       end
+    end
+
+    # [{"scope" => {...}, "commands" => [...]}]: an empty list means the scope's menu is removed.
+    def telegram_menus
+      SCOPES.map do |definition|
+        entries =
+          if definition[:none] then []
+          elsif definition[:administrators_only].nil? then ENTRIES
+          else member_entries
+          end
+        {"scope" => definition.fetch(:scope), "commands" => telegram_commands(entries)}
+      end
+    end
+
+    def member_entries
+      ENTRIES.reject(&:administrators_only)
     end
 
     def help_lines

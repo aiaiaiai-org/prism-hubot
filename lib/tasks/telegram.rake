@@ -7,21 +7,33 @@ require "uri"
 require_relative "../prism_hubot/command_menu"
 
 namespace :telegram do
-  desc "Publish the command menu to Telegram (setMyCommands)"
+  desc "Publish the command menus to Telegram, one per scope (setMyCommands / deleteMyCommands)"
   task commands: "env:load" do
-    commands = PrismHubot::CommandMenu.telegram_commands
-    TelegramBotApiTask.call("setMyCommands", {"commands" => commands})
-    puts "Published #{commands.length} commands to the Telegram menu."
-    puts commands.map { "  /#{_1["command"]} — #{_1["description"]}" }
+    PrismHubot::CommandMenu.telegram_menus.each do |menu|
+      scope = menu.fetch("scope")
+      commands = menu.fetch("commands")
+      if commands.empty?
+        TelegramBotApiTask.call("deleteMyCommands", {"scope" => scope})
+        puts "Removed the command menu for #{scope["type"]}."
+      else
+        TelegramBotApiTask.call("setMyCommands", {"commands" => commands, "scope" => scope})
+        puts "Published #{commands.length} commands for #{scope["type"]}."
+        puts commands.map { "  /#{_1["command"]} — #{_1["description"]}" }
+      end
+    end
   end
 
-  desc "Show the command menu Telegram currently serves (getMyCommands)"
+  desc "Show the command menus Telegram currently serves, per scope (getMyCommands)"
   task commands_status: "env:load" do
-    published = TelegramBotApiTask.call("getMyCommands", {}).fetch("result", [])
-    if published.empty?
-      puts "Telegram serves no commands for this bot. Run `rake telegram:commands`."
-    else
-      puts published.map { "  /#{_1["command"]} — #{_1["description"]}" }
+    PrismHubot::CommandMenu::SCOPES.each do |definition|
+      scope = definition.fetch(:scope)
+      published = TelegramBotApiTask.call("getMyCommands", {"scope" => scope}).fetch("result", [])
+      puts "#{scope["type"]}:"
+      if published.empty?
+        puts "  (none)"
+      else
+        puts published.map { "  /#{_1["command"]} — #{_1["description"]}#{" [private]" if _1["is_ephemeral"]}" }
+      end
     end
   end
 

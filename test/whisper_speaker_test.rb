@@ -105,8 +105,8 @@ class WhisperSpeakerTest < Minitest::Test
       label: name, username: username, text: text)
   end
 
-  def choose(anchor, user: USER, source: 8)
-    @composition.command_handlers.fetch("whisper").call(update: private_update(text: "/whisper", user_id: user), arguments: "")
+  def choose(anchor, user: USER, source: 8, command: "whisper_private")
+    @composition.command_handlers.fetch(command).call(update: private_update(text: "/#{command}", user_id: user), arguments: "")
     @callbacks.call(callback_update(data: "wp:s:#{anchor}", user_id: user, source_ephemeral: source))
   end
 
@@ -134,6 +134,49 @@ class WhisperSpeakerTest < Minitest::Test
     assert_equal 3, sent[:clip].duration_seconds
     assert_empty public_texts, "nothing about the voice reaches the group"
     refute(@private.voices.any? { _1.key?(:message_thread_id) && !_1.key?(:target) }, "no public voice")
+  end
+
+  def test_whisper_sends_the_voice_to_the_whole_group_labelled_as_for_everyone
+    build
+    say(1, "один")
+    say(2, "два")
+
+    choose(1, command: "whisper")
+
+    assert_equal 1, @private.voices.length
+    sent = @private.voices.fetch(0)
+    assert_equal [CHAT, nil, PrismHubot::Copy::PUBLIC], [sent[:chat_id], sent[:message_thread_id], sent[:caption]]
+    refute sent.key?(:target), "a public voice is not addressed to one member"
+    assert_equal ["Ада: один\nдва"], @voice.texts
+    assert_equal [format(PrismHubot::Copy::WHISPER_CHOSEN_SPEAKING_PUBLIC, count: 2, characters: "Ада: один\nдва".length),
+      PrismHubot::Copy::WHISPER_VOICE_DONE_PUBLIC], statuses
+    refute_includes PrismHubot::Copy::PUBLIC, "Приватно"
+    assert_empty public_texts, "the group hears the voice, never a text about the person's request"
+  end
+
+  def test_the_list_is_private_for_whisper_too
+    build
+    say(1, "один")
+
+    @composition.command_handlers.fetch("whisper").call(update: private_update(text: "/whisper", user_id: USER), arguments: "")
+
+    assert_equal 1, @private.sent.length
+    assert @private.sent.fetch(0)[:text].start_with?(PRIVATE)
+    assert_empty public_texts
+  end
+
+  def test_a_public_voice_that_telegram_refuses_is_told_privately_and_nothing_is_retried_privately
+    build
+    @private.define_singleton_method(:send_public_voice) do |**|
+      raise PrismBot::MessageDeliveryError.new("bot.telegram.voice.unconfirmed", "Telegram did not confirm the voice message")
+    end
+    say(1, "один")
+
+    choose(1, command: "whisper")
+
+    assert_equal PrismHubot::Copy::WHISPER_VOICE_NOT_DELIVERED_PUBLIC, statuses.last
+    assert_empty @private.voices, "a refused public voice is never sent as a private one, or the other way round"
+    assert_empty public_texts
   end
 
   def test_one_status_message_goes_from_working_to_done

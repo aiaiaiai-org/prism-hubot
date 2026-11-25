@@ -4,7 +4,7 @@ require "thread"
 
 module PrismHubot
   module Whisper
-    Session = Data.define(:snapshot, :limit, :screen, :anchor) do
+    Session = Data.define(:snapshot, :limit, :screen, :anchor, :visibility) do
       def inspect
         "#<Whisper::Session redacted>"
       end
@@ -26,12 +26,12 @@ module PrismHubot
         "#<Whisper::Sessions redacted>"
       end
 
-      def open(chat_id:, topic_id:, user_id:, snapshot:, limit: nil, screen: false)
+      def open(chat_id:, topic_id:, user_id:, snapshot:, limit: nil, screen: false, visibility: :private)
         @lock.synchronize do
           prune
           @sessions.shift while @sessions.size >= MAX_SESSIONS
           # Returns the session it just stored.
-          @sessions[key(chat_id, topic_id, user_id)] = Session.new(snapshot:, limit:, screen:, anchor: nil)
+          @sessions[key(chat_id, topic_id, user_id)] = Session.new(snapshot:, limit:, screen:, anchor: nil, visibility:)
         end
       end
 

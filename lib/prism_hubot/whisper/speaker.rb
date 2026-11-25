@@ -2,9 +2,10 @@
 
 module PrismHubot
   module Whisper
-    # Turns a chosen range into a private voice message, in the background. Everything the person
-    # hears about it goes into the one status message their button press sits on, by editing it; the
-    # finished voice is sent to them alone. Nothing here ever falls back to a public message: when a
+    # Turns a chosen range into a voice message, in the background. Everything the person hears about
+    # it goes into the one private status message their button press sits on, by editing it. The
+    # finished voice goes to them alone (:private) or, only when they asked with /whisper, to the group
+    # they chose it in (:public, labelled as for everyone). A private result is never made public: when a
     # private delivery or edit is not possible, it is logged without content and nothing is sent.
     #
     # A person has at most one voice in progress per chat and topic, and the pool is bounded, so a
@@ -23,7 +24,7 @@ module PrismHubot
       # :started once the work is accepted, :busy if this person already has a voice in progress or
       # the pool is full. The block runs after the slot is claimed and before the work can finish, so
       # the "in progress" status can never overwrite the final one.
-      def start(update, text)
+      def start(update, text, visibility: :private)
         key = key(update)
         return :busy unless claim(key)
 
@@ -34,7 +35,7 @@ module PrismHubot
           raise
         end
         accepted = @executor.post do
-          run(update, text)
+          run(update, text, visibility)
         ensure
           release(key)
         end
@@ -46,19 +47,30 @@ module PrismHubot
 
       private
 
-      def run(update, text)
+      def run(update, text, visibility)
         clip = @voice.call(text)
-        @voice_sender.send_ephemeral_voice(target: target(update), clip: clip, caption: Copy::PRIVATE)
-        finish(update, Copy::WHISPER_VOICE_DONE)
+        deliver(update, clip, visibility)
+        finish(update, (visibility == :public) ? Copy::WHISPER_VOICE_DONE_PUBLIC : Copy::WHISPER_VOICE_DONE)
       rescue Speech::Failure => failure
         @logger.warn("whisper_speech failed code=#{failure.code}")
         finish(update, Copy::WHISPER_SPEECH_FAILURES.fetch(failure.code))
       rescue PrismBot::Error => error
         @logger.warn("whisper_speech not_delivered code=#{error.code}")
-        finish(update, Copy::WHISPER_VOICE_NOT_DELIVERED)
+        finish(update, (visibility == :public) ? Copy::WHISPER_VOICE_NOT_DELIVERED_PUBLIC : Copy::WHISPER_VOICE_NOT_DELIVERED)
       rescue => error
         @logger.error("whisper_speech unexpected_error class=#{error.class.name}")
         finish(update, Copy::WHISPER_REFUSAL_FALLBACK)
+      end
+
+      def deliver(update, clip, visibility)
+        if visibility == :public
+          @voice_sender.send_public_voice(
+            chat_id: update.chat_id, clip: clip, caption: Copy::PUBLIC,
+            message_thread_id: update.surface_context.message_thread_id
+          )
+        else
+          @voice_sender.send_ephemeral_voice(target: target(update), clip: clip, caption: Copy::PRIVATE)
+        end
       end
 
       # The status can only be edited privately; if that fails the person simply sees the old status.

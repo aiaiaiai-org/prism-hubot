@@ -6,7 +6,8 @@ module PrismHubot
     # voice is unavailable; with a URL but a missing credential the process refuses to start, so a
     # half-configured release is visible at deployment and not at the first person's request.
     #
-    #   PRISM_HUBOT_TTS_URL             https URL of prism-ai's POST /v1/speech
+    #   PRISM_HUBOT_TTS_URL             URL of prism-ai's POST /v1/speech: https, or http to a Docker network alias
+    #                                   on this server (a single-label host such as prism-ai-tts)
     #   PRISM_HUBOT_TTS_VOICE           voice alias the service knows (default uk-UA)
     #   PRISM_HUBOT_AIS_CLIENT_ID       this product's AIS client id (as registered in 4x-ais, e.g. prism-hubot)
     #   PRISM_HUBOT_AIS_KEY_ID          the `kid` the public half of the key is registered under (default k1)
@@ -31,7 +32,8 @@ module PrismHubot
           )
         end
         token_url = environment.fetch("PRISM_HUBOT_AIS_TOKEN_URL", DEFAULT_TOKEN_URL).to_s.strip
-        [url, token_url].each { https!(_1) }
+        endpoint!(url, private_network: true)
+        endpoint!(token_url)
 
         key_id = environment.fetch("PRISM_HUBOT_AIS_KEY_ID", AisTokenSource::DEFAULT_KEY_ID).to_s.strip
         unless AisTokenSource::KEY_ID.match?(key_id)
@@ -51,17 +53,17 @@ module PrismHubot
         )
       end
 
-      def self.https!(value)
-        uri = URI(value)
-        return if uri.is_a?(URI::HTTPS) && uri.host
+      def self.endpoint!(value, private_network: false)
+        return if Endpoint.permitted?(URI(value), private_network: private_network)
 
         raise ArgumentError
       rescue URI::InvalidURIError, ArgumentError
         raise PrismBot::ConfigurationError.new(
-          "prism_hubot.speech.url.invalid", "speech URLs must be https URLs"
+          "prism_hubot.speech.url.invalid",
+          private_network ? "the speech URL must be https, or http to a private network alias" : "speech URLs must be https URLs"
         )
       end
-      private_class_method :https!
+      private_class_method :endpoint!
     end
   end
 end

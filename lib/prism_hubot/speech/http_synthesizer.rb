@@ -36,7 +36,8 @@ module PrismHubot
           headers: {"authorization" => "Bearer #{@tokens.call}", "content-type" => "application/json",
                     "accept" => "audio/wav"},
           body: JSON.generate("text" => text, "voice" => @voice),
-          max_bytes: MAX_RESPONSE_BYTES
+          max_bytes: MAX_RESPONSE_BYTES,
+          private_network: true
         )
       end
 

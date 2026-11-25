@@ -13,7 +13,7 @@ chosen messages -> narration text (<= 4000 characters)
   -> Voice            PrismBot::Domain::VoiceClip (whole-second duration)
 ```
 
-Nothing here keeps text or audio: the text goes to the service once over HTTPS, the audio only passes
+Nothing here keeps text or audio: the text goes to the service once (over HTTPS, or over cleartext HTTP to a private Docker network alias on the same server, see below), the audio only passes
 through the process's pipes, and failures carry a code (`Speech::Failure`), never text, audio, tokens
 or response bodies.
 
@@ -49,7 +49,7 @@ says voice is unavailable; with a URL and a missing credential the process refus
 
 | Variable | Meaning |
 | --- | --- |
-| `PRISM_HUBOT_TTS_URL` | https URL of prism-ai's `POST /v1/speech` |
+| `PRISM_HUBOT_TTS_URL` | URL of prism-ai's `POST /v1/speech`: https, or http to a single-label Docker network alias such as `http://prism-ai-tts:1927/v1/speech` (the service is private to the server's network and has no public route). A dotted name, an IP or `localhost` is never accepted over http. The AIS token URL is always https. |
 | `PRISM_HUBOT_TTS_VOICE` | voice alias the service knows (default `uk-UA`) |
 | `PRISM_HUBOT_AIS_CLIENT_ID` | this product's AIS client id: the one registered in 4x-ais, `prism-hubot` |
 | `PRISM_HUBOT_AIS_KEY_ID` | the `kid` the public half of the key is registered under (default `k1`) |

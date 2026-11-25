@@ -14,8 +14,8 @@ class SpeechTest < Minitest::Test
       @posts = []
     end
 
-    def post(url, headers:, body:, max_bytes:)
-      @posts << {url: url, headers: headers, body: body, max_bytes: max_bytes}
+    def post(url, headers:, body:, max_bytes:, private_network: false)
+      @posts << {url: url, headers: headers, body: body, max_bytes: max_bytes, private_network: private_network}
       response = @responses.shift or raise "unexpected request"
       raise response if response.is_a?(Exception)
 
@@ -352,6 +352,45 @@ class SpeechTest < Minitest::Test
     assert_raises(PrismBot::ConfigurationError) do
       PrismHubot::Speech::Configuration.build(environment(PRISM_HUBOT_AIS_TOKEN_URL: "http://auth.example.test/token"))
     end
+  end
+
+  def test_the_speech_service_may_be_a_private_network_alias_over_http_and_nothing_else
+    assert PrismHubot::Speech::Configuration.build(
+      environment(PRISM_HUBOT_TTS_URL: "http://prism-ai-tts:1927/v1/speech"), http: FakeHttp.new
+    )
+    # Cleartext never reaches a name that resolves outside the server's own network.
+    %w[http://tts.example.test/v1/speech http://localhost:1927/v1/speech http://127.0.0.1:1927/v1/speech
+      http://10.0.0.5:1927/v1/speech ftp://prism-ai-tts/v1/speech].each do |url|
+      assert_raises(PrismBot::ConfigurationError, url) do
+        PrismHubot::Speech::Configuration.build(environment(PRISM_HUBOT_TTS_URL: url))
+      end
+    end
+    # The AIS token request (it carries the signed assertion) stays https even for an alias.
+    assert_raises(PrismBot::ConfigurationError) do
+      PrismHubot::Speech::Configuration.build(environment(PRISM_HUBOT_AIS_TOKEN_URL: "http://ais:1927/token"))
+    end
+  end
+
+  def test_the_http_client_sends_cleartext_only_when_the_caller_says_the_peer_is_private
+    http = PrismHubot::Speech::Http.new
+    refused = ->(url, **options) do
+      error = assert_raises(PrismHubot::Speech::Failure) do
+        http.post(url, headers: {}, body: "", max_bytes: 10, **options)
+      end
+      assert_equal :unavailable, error.code
+    end
+    refused.call("http://prism-ai-tts:1927/v1/speech")
+    refused.call("http://tts.example.test/v1/speech", private_network: true)
+    refused.call("http://127.0.0.1:1927/v1/speech", private_network: true)
+  end
+
+  def test_the_synthesizer_marks_its_peer_as_private_network
+    http = FakeHttp.new(Response.new(status: 200, body: pcm16_wav(seconds: 1)))
+    synthesizer = PrismHubot::Speech::HttpSynthesizer.new(
+      url: "http://prism-ai-tts:1927/v1/speech", voice: "uk-UA", tokens: -> { "t" }, http: http
+    )
+    synthesizer.call("x")
+    assert http.posts.fetch(0).fetch(:private_network)
   end
 
   def test_the_key_id_defaults_to_k1_and_must_be_well_formed

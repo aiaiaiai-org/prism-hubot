@@ -8,7 +8,9 @@ state_store = PrismHubot::FileInteractionStateStore.new(
   directory: configuration.state_directory,
   ttl_seconds: configuration.state_ttl_seconds
 )
-client = PrismHubot::Client.new(state_store: state_store)
+# Text-to-speech is optional: without PRISM_HUBOT_TTS_URL Whisper lists and chooses but cannot speak.
+speech = PrismHubot::Speech::Configuration.build(ENV)
+client = PrismHubot::Client.new(state_store: state_store, speech: speech)
 
 app = PrismBot::Bootstrap.build(env: ENV, client: client)
 

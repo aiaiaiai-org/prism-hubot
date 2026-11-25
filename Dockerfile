@@ -15,7 +15,7 @@ RUN bundle install --jobs 4 --retry 3 \
 
 FROM ruby:4.0.6-slim
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates \
+    && apt-get install --yes --no-install-recommends ca-certificates opus-tools \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --uid 1927 hubot \
     && install -d -o hubot -g hubot /data

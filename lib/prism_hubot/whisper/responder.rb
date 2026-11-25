@@ -44,6 +44,15 @@ module PrismHubot
         @message_sender.send_message(**update.reply_target, text: text)
       end
 
+      # Edits the private status message and nothing else: unlike #settle it never falls back to a public
+      # message, because it runs after the request is over and has no right to speak to the group.
+      def settle_private(update, text)
+        ref = update.source_ephemeral_ref
+        return nil unless ref
+
+        @ephemeral_sender.edit_ephemeral_message(ref: ref, text: text, reply_markup: nil)
+      end
+
       def refuse(update, reason, settle: false)
         text = "#{Copy::PRIVATE}\n#{Copy::WHISPER_REFUSALS.fetch(reason, Copy::WHISPER_REFUSAL_FALLBACK)}"
         settle ? self.settle(update, text) : reply(update, text)

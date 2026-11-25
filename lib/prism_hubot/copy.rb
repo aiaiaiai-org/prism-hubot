@@ -52,7 +52,20 @@ module PrismHubot
     WHISPER_PICKER_CLOSED = "#{PRIVATE}\nВибір закрито.".freeze
     WHISPER_PICKER_STALE = "#{PRIVATE}\nСписок застарів або змінився. Викличте /whisper ще раз.".freeze
     WHISPER_CHOSEN = "#{PRIVATE}\nВибрано %<count>d повідомлень (%<characters>d символів). " \
-      "Озвучення з'явиться в наступному кроці.".freeze
+      "Озвучення поки недоступне.".freeze
+    WHISPER_CHOSEN_SPEAKING = "#{PRIVATE}\nВибрано %<count>d повідомлень (%<characters>d символів). Озвучую…".freeze
+    WHISPER_VOICE_DONE = "#{PRIVATE}\nГотово: голос надіслано лише вам.".freeze
+    WHISPER_VOICE_BUSY = "#{PRIVATE}\nВи вже озвучуєте повідомлення, або бот зайнятий. Спробуйте за хвилину.".freeze
+    WHISPER_VOICE_NOT_DELIVERED = "#{PRIVATE}\nГолос готовий, але Telegram не дозволив надіслати його приватно, " \
+      "тож нічого не надіслано.".freeze
+    WHISPER_SPEECH_FAILURES = {
+      unavailable: "#{PRIVATE}\nОзвучення зараз недоступне. Спробуйте пізніше.",
+      busy: "#{PRIVATE}\nСервіс озвучення зайнятий. Спробуйте за хвилину.",
+      too_long: "#{PRIVATE}\nВибір завеликий для озвучення. Оберіть менше повідомлень.",
+      rejected: "#{PRIVATE}\nСервіс озвучення відхилив запит. Нічого не надіслано.",
+      timeout: "#{PRIVATE}\nОзвучення зайняло надто багато часу. Спробуйте менше повідомлень.",
+      encoding: "#{PRIVATE}\nНе вдалося підготувати голос. Нічого не надіслано."
+    }.each_value(&:freeze).freeze
     WHISPER_REFUSALS = {
       "history_unavailable" => "Немає збережених повідомлень, які можна прочитати. Whisper бачить лише те, що надійшло після його вмикання.",
       "unresolved_author" => "Не вдалося однозначно визначити автора за цим іменем серед збережених повідомлень.",

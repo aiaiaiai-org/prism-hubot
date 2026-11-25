@@ -13,11 +13,12 @@ module PrismHubot
 
       Request = Data.define(:usernames, :limit, :screen)
 
-      def initialize(history:, sessions:, view:, responder:)
+      def initialize(history:, sessions:, view:, responder:, speaker: nil)
         @history = history
         @sessions = sessions
         @view = view
         @responder = responder
+        @speaker = speaker
       end
 
       def start(update, arguments)
@@ -52,9 +53,12 @@ module PrismHubot
           anchor: anchor, screen: session.screen
         )
         @sessions.choose(chat_id: update.chat_id, topic_id: topic(update), user_id: update.user_id, anchor: anchor)
-        @responder.settle(
-          update, format(Copy::WHISPER_CHOSEN, count: chosen.size, characters: @history.narrate(chosen).length)
-        )
+        narration = @history.narrate(chosen)
+        figures = {count: chosen.size, characters: narration.length}
+        return @responder.settle(update, format(Copy::WHISPER_CHOSEN, **figures)) unless @speaker
+
+        started = @speaker.start(update, narration) { @responder.settle(update, format(Copy::WHISPER_CHOSEN_SPEAKING, **figures)) }
+        @responder.settle(update, Copy::WHISPER_VOICE_BUSY) if started == :busy
       rescue Refusal => refusal
         @responder.refuse(update, refusal.message, settle: true)
       end

@@ -3,9 +3,15 @@
 module PrismHubot
   class Client
     # history is process-local: nothing is retained across a restart, and every chat starts disabled.
+    # speech is a Speech::Voice, or nil when text-to-speech is not configured: Whisper then lists and
+    # chooses messages but says that voice is not available.
     def initialize(state_store:, presenter: Presenter.new, history: Whisper::History.new,
-      sessions: Whisper::Sessions.new, picker_view: Whisper::PickerView.new)
+      sessions: Whisper::Sessions.new, picker_view: Whisper::PickerView.new, speech: nil, executor: nil,
+      logger: Logger.new($stderr))
       @state_store = state_store
+      @speech = speech
+      @executor = executor
+      @logger = logger
       @presenter = presenter
       @history = history
       @sessions = sessions
@@ -42,6 +48,15 @@ module PrismHubot
 
     private
 
+    def speaker(services, responder)
+      return nil unless @speech
+
+      Whisper::Speaker.new(
+        voice: @speech, voice_sender: services.voice_sender, responder: responder,
+        executor: @executor || Whisper::ThreadExecutor.new, logger: @logger
+      )
+    end
+
     def whisper_handlers(services)
       access = Whisper::Access.new(members: services.chat_member_lookup)
       responder = Whisper::Responder.new(
@@ -49,7 +64,8 @@ module PrismHubot
       )
       shared = {history: @history, access: access, responder: responder}
       flow = Whisper::PickerFlow.new(
-        history: @history, sessions: @sessions, view: @picker_view, responder: responder
+        history: @history, sessions: @sessions, view: @picker_view, responder: responder,
+        speaker: speaker(services, responder)
       )
       {
         command: Handlers::WhisperCommand.new(**shared, flow: flow),

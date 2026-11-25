@@ -128,7 +128,7 @@ class WhisperSpeakerTest < Minitest::Test
     assert_equal ["Ада: один\nдва"], @voice.texts
     assert_equal 1, @private.voices.length
     sent = @private.voices.fetch(0)
-    assert_equal PRIVATE, sent[:caption]
+    assert_equal "#{PRIVATE}\nПовідомлення від: Ада", sent[:caption]
     assert_equal :member, sent[:target].mode
     assert_equal [CHAT, USER], [sent[:target].chat_id, sent[:target].receiver_user_id]
     assert_equal 3, sent[:clip].duration_seconds
@@ -145,11 +145,11 @@ class WhisperSpeakerTest < Minitest::Test
 
     assert_equal 1, @private.voices.length
     sent = @private.voices.fetch(0)
-    assert_equal [CHAT, nil, PrismHubot::Copy::PUBLIC], [sent[:chat_id], sent[:message_thread_id], sent[:caption]]
+    assert_equal [CHAT, nil, "#{PrismHubot::Copy::PUBLIC}\nПовідомлення від: Ада"], [sent[:chat_id], sent[:message_thread_id], sent[:caption]]
     refute sent.key?(:target), "a public voice is not addressed to one member"
     assert_equal ["Ада: один\nдва"], @voice.texts
-    assert_equal [format(PrismHubot::Copy::WHISPER_CHOSEN_SPEAKING_PUBLIC, count: 2, characters: "Ада: один\nдва".length),
-      PrismHubot::Copy::WHISPER_VOICE_DONE_PUBLIC], statuses
+    assert_equal [format(PrismHubot::Copy::WHISPER_CHOSEN_SPEAKING_PUBLIC, count: 2, characters: "Ада: один\nдва".length)], statuses
+    assert_equal [8], @private.deleted.map(&:ephemeral_message_id), "the working status is removed once the voice is out"
     refute_includes PrismHubot::Copy::PUBLIC, "Приватно"
     assert_empty public_texts, "the group hears the voice, never a text about the person's request"
   end
@@ -179,16 +179,67 @@ class WhisperSpeakerTest < Minitest::Test
     assert_empty public_texts
   end
 
-  def test_one_status_message_goes_from_working_to_done
+  def test_the_working_status_is_replaced_by_the_voice_not_followed_by_a_done_message
     build
+    voices_when_deleted = []
+    voices = @private.voices
+    @private.define_singleton_method(:delete_ephemeral_message) do |ref:|
+      voices_when_deleted << voices.length
+      @deleted << ref
+      nil
+    end
     say(1, "один")
 
     choose(1)
 
-    assert_equal [format(PrismHubot::Copy::WHISPER_CHOSEN_SPEAKING, count: 1, characters: "Ада: один".length),
-      PrismHubot::Copy::WHISPER_VOICE_DONE], statuses
-    assert_equal [8, 8], @private.edits.map { _1[:ref].ephemeral_message_id }
+    assert_equal [format(PrismHubot::Copy::WHISPER_CHOSEN_SPEAKING, count: 1, characters: "Ада: один".length)], statuses
+    assert_equal [8], @private.deleted.map(&:ephemeral_message_id)
+    assert_equal [1], voices_when_deleted, "the status goes only after the voice has been delivered"
     assert(statuses.all? { _1.start_with?(PRIVATE) })
+  end
+
+  def test_the_status_stays_and_says_why_when_the_voice_could_not_be_delivered
+    build
+    @private.define_singleton_method(:send_ephemeral_voice) do |**|
+      raise PrismBot::MessageDeliveryError.new("bot.telegram.ephemeral.unconfirmed", "no")
+    end
+    say(1, "один")
+
+    choose(1)
+
+    assert_empty @private.deleted
+    assert_equal PrismHubot::Copy::WHISPER_VOICE_NOT_DELIVERED, statuses.last
+  end
+
+  def test_the_caption_names_only_the_authors_in_the_voice_in_the_order_they_first_speak
+    build
+    say(1, "один", author: 2, name: "Борис", username: "boris")
+    say(2, "два", author: 1)
+    say(3, "три", author: 2, name: "Борис", username: "boris")
+    say(4, "чотири", author: 3, name: "Віра", username: "vira")
+
+    choose(2)
+
+    assert_equal "#{PRIVATE}\nПовідомлення від: Ада, Борис, Віра", @private.voices.fetch(0)[:caption]
+    assert_equal ["Ада: два\nБорис: три\nВіра: чотири"], @voice.texts
+
+    @private.voices.clear
+    choose(4)
+    assert_equal "#{PRIVATE}\nПовідомлення від: Віра", @private.voices.fetch(0)[:caption], "an author who is not in the range is not named"
+  end
+
+  def test_many_requested_authors_but_one_in_the_voice_names_only_that_one
+    build
+    (1..10).each { |index| say(index, "а#{index}", author: index, name: "Автор#{index}", username: "avtor#{index}") }
+    (11..20).each { |index| say(index, "б#{index}", author: 1, name: "Автор1", username: "avtor1") }
+
+    @composition.command_handlers.fetch("whisper_private").call(
+      update: private_update(text: "/whisper_private", user_id: USER),
+      arguments: (1..10).map { "@avtor#{_1}" }.join(" ") + " 10"
+    )
+    @callbacks.call(callback_update(data: "wp:s:11", user_id: USER, source_ephemeral: 8))
+
+    assert_equal "#{PRIVATE}\nПовідомлення від: Автор1", @private.voices.fetch(0)[:caption]
   end
 
   def test_the_working_status_is_set_before_the_work_can_finish
@@ -200,7 +251,9 @@ class WhisperSpeakerTest < Minitest::Test
     assert_includes statuses.last, "Озвучую"
 
     @executor.drain
-    assert_equal PrismHubot::Copy::WHISPER_VOICE_DONE, statuses.last
+    assert_equal 1, statuses.length, "no done message follows: the voice replaces the status"
+    assert_equal 1, @private.deleted.length
+    assert_equal 1, @private.voices.length
   end
 
   def test_every_speech_failure_is_told_privately_and_sends_no_voice
@@ -246,8 +299,26 @@ class WhisperSpeakerTest < Minitest::Test
     assert_empty public_texts
   end
 
-  def test_a_failing_status_edit_neither_raises_nor_goes_public
+  def test_a_status_that_cannot_be_removed_says_it_is_done_instead_and_never_goes_public
     build
+    @private.define_singleton_method(:delete_ephemeral_message) do |ref:|
+      raise PrismBot::MessageDeliveryError.new("bot.telegram.unavailable", "Telegram is unavailable")
+    end
+    say(1, "один")
+
+    choose(1)
+
+    assert_equal 1, @private.voices.length
+    assert_equal PrismHubot::Copy::WHISPER_VOICE_DONE, statuses.last
+    assert_empty public_texts
+    assert_includes @log.lines, "whisper_speech status_not_removed code=bot.telegram.unavailable"
+  end
+
+  def test_when_neither_removing_nor_editing_the_status_works_nothing_raises_and_nothing_goes_public
+    build
+    @private.define_singleton_method(:delete_ephemeral_message) do |ref:|
+      raise PrismBot::MessageDeliveryError.new("bot.telegram.unavailable", "Telegram is unavailable")
+    end
     calls = 0
     @private.define_singleton_method(:edit_ephemeral_message) do |ref:, text:, reply_markup: nil|
       calls += 1
@@ -311,7 +382,8 @@ class WhisperSpeakerTest < Minitest::Test
 
     @executor.instance_variable_set(:@mode, :inline)
     choose(1)
-    assert_equal PrismHubot::Copy::WHISPER_VOICE_DONE, statuses.last
+    assert_equal 1, @private.voices.length
+    assert_equal 1, @private.deleted.length
   end
 
   def test_without_speech_the_range_is_chosen_and_voice_is_said_to_be_unavailable

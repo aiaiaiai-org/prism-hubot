@@ -52,12 +52,13 @@ module PrismHubotTestSupport
 
   # Records private (ephemeral) sends, edits and voice deliveries.
   class EphemeralSender
-    attr_reader :sent, :edits, :voices
+    attr_reader :sent, :edits, :voices, :deleted
 
     def initialize
       @sent = []
       @edits = []
       @voices = []
+      @deleted = []
     end
 
     def send_ephemeral_message(target:, text:, reply_markup: nil)
@@ -69,6 +70,11 @@ module PrismHubotTestSupport
 
     def edit_ephemeral_message(ref:, text:, reply_markup: nil)
       @edits << {ref: ref, text: text, reply_markup: reply_markup}
+      nil
+    end
+
+    def delete_ephemeral_message(ref:)
+      @deleted << ref
       nil
     end
 

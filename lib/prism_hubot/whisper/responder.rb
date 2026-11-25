@@ -53,6 +53,16 @@ module PrismHubot
         @ephemeral_sender.edit_ephemeral_message(ref: ref, text: text, reply_markup: nil)
       end
 
+      # Removes the private status message, for when a result replaces it. false when there is no private
+      # message to remove (a press on a public message); a Telegram refusal raises PrismBot::Error.
+      def remove_status(update)
+        ref = update.source_ephemeral_ref
+        return false unless ref
+
+        @ephemeral_sender.delete_ephemeral_message(ref: ref)
+        true
+      end
+
       def refuse(update, reason, settle: false)
         text = "#{Copy::PRIVATE}\n#{Copy::WHISPER_REFUSALS.fetch(reason, Copy::WHISPER_REFUSAL_FALLBACK)}"
         settle ? self.settle(update, text) : reply(update, text)

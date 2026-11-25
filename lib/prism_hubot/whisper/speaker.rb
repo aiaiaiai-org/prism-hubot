@@ -24,7 +24,8 @@ module PrismHubot
       # :started once the work is accepted, :busy if this person already has a voice in progress or
       # the pool is full. The block runs after the slot is claimed and before the work can finish, so
       # the "in progress" status can never overwrite the final one.
-      def start(update, text, visibility: :private)
+      # authors are the display labels of those whose messages are in text, for the voice's caption.
+      def start(update, text, visibility: :private, authors: [])
         key = key(update)
         return :busy unless claim(key)
 
@@ -35,7 +36,7 @@ module PrismHubot
           raise
         end
         accepted = @executor.post do
-          run(update, text, visibility)
+          run(update, text, visibility, authors)
         ensure
           release(key)
         end
@@ -47,10 +48,10 @@ module PrismHubot
 
       private
 
-      def run(update, text, visibility)
+      def run(update, text, visibility, authors)
         clip = @voice.call(text)
-        deliver(update, clip, visibility)
-        finish(update, (visibility == :public) ? Copy::WHISPER_VOICE_DONE_PUBLIC : Copy::WHISPER_VOICE_DONE)
+        deliver(update, clip, visibility, authors)
+        replace_status(update, (visibility == :public) ? Copy::WHISPER_VOICE_DONE_PUBLIC : Copy::WHISPER_VOICE_DONE)
       rescue Speech::Failure => failure
         @logger.warn("whisper_speech failed code=#{failure.code}")
         finish(update, Copy::WHISPER_SPEECH_FAILURES.fetch(failure.code))
@@ -62,15 +63,26 @@ module PrismHubot
         finish(update, Copy::WHISPER_REFUSAL_FALLBACK)
       end
 
-      def deliver(update, clip, visibility)
+      def deliver(update, clip, visibility, authors)
         if visibility == :public
           @voice_sender.send_public_voice(
-            chat_id: update.chat_id, clip: clip, caption: Copy::PUBLIC,
+            chat_id: update.chat_id, clip: clip, caption: Caption.build(Copy::PUBLIC, authors),
             message_thread_id: update.surface_context.message_thread_id
           )
         else
-          @voice_sender.send_ephemeral_voice(target: target(update), clip: clip, caption: Copy::PRIVATE)
+          @voice_sender.send_ephemeral_voice(target: target(update), clip: clip, caption: Caption.build(Copy::PRIVATE, authors))
         end
+      end
+
+      # The voice has been delivered, so the "in progress" status has done its job: it is removed, and
+      # the voice stands in its place. If it cannot be removed it says it is done instead.
+      def replace_status(update, done_text)
+        return if @responder.remove_status(update)
+
+        finish(update, done_text)
+      rescue PrismBot::Error => error
+        @logger.warn("whisper_speech status_not_removed code=#{error.code}")
+        finish(update, done_text)
       end
 
       # The status can only be edited privately; if that fails the person simply sees the old status.

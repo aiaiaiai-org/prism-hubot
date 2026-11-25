@@ -64,7 +64,7 @@ module PrismHubot
 
         visibility = session.visibility
         speaking = (visibility == :public) ? Copy::WHISPER_CHOSEN_SPEAKING_PUBLIC : Copy::WHISPER_CHOSEN_SPEAKING
-        started = @speaker.start(update, narration, visibility: visibility) { @responder.settle(update, format(speaking, **figures)) }
+        started = @speaker.start(update, narration, visibility: visibility, authors: chosen.uniq(&:author_id).map(&:label)) { @responder.settle(update, format(speaking, **figures)) }
         @responder.settle(update, Copy::WHISPER_VOICE_BUSY) if started == :busy
       rescue Refusal => refusal
         @responder.refuse(update, refusal.message, settle: true)

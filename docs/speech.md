@@ -24,13 +24,20 @@ Choosing a message in the picker fixes the range; with speech configured the bot
 1. edits the person's own ephemeral picker message to `Вибрано N повідомлень (M символів). Озвучую…`;
 2. in a small bounded background pool (2 workers, 6 queued; synthesis outlasts what Telegram waits for
    a webhook answer, and an unanswered update is sent again) turns the narration into a `VoiceClip`;
-3. sends it as an ephemeral native voice **to that person only**, addressed as a member (the bot is an
-   administrator wherever Whisper is on, which is what allows it after the 15 seconds a button press
-   entitles it to), with the caption `🔒 Приватно · Whisper`;
-4. edits the same status message to `Готово: голос надіслано лише вам.`
+3. sends the voice: for `/whisper_private` as an ephemeral native voice **to that person only**, addressed as
+   a member (the bot is an administrator wherever Whisper is on, which is what allows it after the 15
+   seconds a button press entitles it to); for `/whisper` as a public voice in the group or topic. The
+   caption is the audience label, then `Повідомлення від: ` and the display names of the authors whose
+   messages are actually in the voice, in the order they first speak (not everyone the request named;
+   if they do not all fit Telegram's 1024 characters, the rest is counted: `та ще N`);
+4. **removes** the private status message once the voice has been delivered, so the voice stands in its
+   place. Telegram cannot edit a text message into a voice (`editEphemeralMessageMedia` has no voice type,
+   and `replace_callback_query_message` is not allowed on ephemeral messages), so the voice is a new
+   message and the status is deleted. If the status cannot be deleted it is edited to
+   `Готово: голос надіслано …` instead; if the voice could not be delivered the status stays and says why.
 
 A person has one voice in progress per chat and topic; a second press, or a full pool, answers
-"busy". Every failure is told in the same private status message by code (service busy, too long,
+"busy". Every failure is told in the private status message by code (service busy, too long,
 timeout, encoding, not deliverable privately); none is ever posted to the group, a status that cannot
 be edited privately is dropped, and the log carries a code and a class name only, never message text.
 With no speech configured, the range is still chosen and the status says voice is not available.

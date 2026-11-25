@@ -153,6 +153,18 @@ class SpeechTest < Minitest::Test
       token_url: "https://a.test/t", audience: "prism-ai", scope: "tts.synthesize")
   end
 
+  def test_the_key_may_be_stored_as_one_line_of_base64
+    encoded = Base64.strict_encode64(key.private_to_pem)
+    refute_includes encoded, "\n"
+    source = PrismHubot::Speech::AisTokenSource.new(client_id: "x", private_key_pem: encoded,
+      token_url: "https://a.test/t", audience: "prism-ai", scope: "tts.synthesize", http: FakeHttp.new(token_response))
+    assert_equal "tok-1", source.call
+    assert_raises(PrismBot::ConfigurationError) do
+      PrismHubot::Speech::AisTokenSource.new(client_id: "x", private_key_pem: Base64.strict_encode64("not a key"),
+        token_url: "https://a.test/t", audience: "prism-ai", scope: "tts.synthesize")
+    end
+  end
+
   # --- Synthesizer -----------------------------------------------------------------------------------
 
   class Tokens

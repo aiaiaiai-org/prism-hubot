@@ -2,9 +2,9 @@
 
 module PrismHubot
   module Handlers
-    # /whisper_off, an ephemeral administrator command. Collection stops and retained texts are
-    # dropped first; telling the group is best effort and cannot undo that.
-    class WhisperOff
+    # /stop, an ephemeral command for a group's administrators and creator. Collection stops and retained
+    # texts are dropped first; telling the group is best effort and cannot undo that.
+    class WhisperStop
       def initialize(history:, access:, responder:)
         @history = history
         @access = access

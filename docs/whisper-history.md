@@ -4,7 +4,7 @@ This slice is process-local and deliberately not wired to Telegram. An authentic
 administrator/disclosure flow must call enable; the verified webhook adapter must
 filter ordinary text/captions, bot messages, commands, anonymous authors and surface
 membership before calling observe. Opt-in is not persisted across restart: history
-and consent start empty. One History instance belongs to one bot instance.
+and the picker sessions start empty. One History instance belongs to one bot instance.
 
 ## Adapter contract for observe
 
@@ -47,13 +47,14 @@ text and may state that gaps exist.
 
 ## Activation and observation
 
-`/whisper` and `/whisper_off` are declared `is_ephemeral` in the command menu (`rake telegram:commands`).
-Only a chat administrator can switch Whisper on, and only when the bot is itself an administrator:
-the check uses `getChatMember` for the person who pressed the button, at press time, and a lookup
-Telegram does not confirm is a refusal. The consent step shows the disclosure privately, and on
-confirmation the bot first posts a **public** notice in the same chat or topic that message texts are
-being kept; if that notice cannot be posted, nothing is enabled. `/whisper_off` clears the history first
-and then announces it, best effort. State is process-local: a restart disables every chat.
+All four commands are declared `is_ephemeral` in the command menu (`rake telegram:commands`).
+`/start` switches Whisper on and `/stop` switches it off, for the group or topic they are sent in, and
+only a chat administrator or the creator may send them, and only when the bot is itself an administrator:
+the check uses `getChatMember` for the sender at that moment, and a lookup Telegram does not confirm is
+a refusal. On `/start` the bot first posts a **public** notice in the same chat or topic that message
+texts are being kept, and only then switches collection on; if that notice cannot be posted, nothing is
+enabled. `/stop` clears the history first and then announces it, best effort. State is process-local: a
+restart disables every chat, so an administrator sends `/start` again.
 
 Ordinary group messages reach `History#observe` through a prism-bot observer: text or caption from
 human members, never commands, never ephemeral commands or button presses. The first sighting of a

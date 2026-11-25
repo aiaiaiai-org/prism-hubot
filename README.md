@@ -6,32 +6,24 @@ Personal Telegram client for multi-channel publishing through Prism.
 
 ## Current client
 
-The client pins an immutable `aiaiaiai-prism-bot` commit and extends its public client-composition contract with the first Prism Hubot-specific conversational flow.
+Prism Hubot is a Whisper bot: **four commands and nothing else**. It extends the public client-composition contract of [`prism-bot`](https://github.com/aiaiaiai-org/prism-bot) and declares all four as *open commands*: nobody needs a Prism Hub identity, and each handler decides from Telegram's own member status what its sender may do.
 
-Available interactions:
+| Command | Who | What |
+| --- | --- | --- |
+| `/start` | administrators and the creator of the group | switch [Whisper](docs/whisper.md) on for this group or topic; the group is told in public that message texts are being kept |
+| `/stop` | administrators and the creator | switch it off and erase what was kept |
+| `/whisper` | every member, after `/start` | choose messages privately; the voice goes to **everyone** in the group (`🔓 Для всіх · Whisper`) |
+| `/whisper_private` | every member, after `/start` | the same choice; the voice goes **only to you** (`🔒 Приватно · Whisper`) |
 
-- `/start` — onboard or resolve the Telegram user through Prism Hub and show the current Telegram Context Card;
-- `/context` — show the current chat/topic context without claiming an unverified Hub binding;
-- `/post` — start a two-message create-post flow;
-- `зробити допис` — natural-text alias for `/post`;
-- `/cancel` — cancel a pending conversational action;
-- `/help` — show the Prism Hubot command surface;
-- `/status` — read the caller-owned bot lifecycle state;
-- `/stop` — persistently pause the caller-owned logical bot instance;
-- `/resume` — resume a paused instance;
-- `/channels` — list Hub-authorised publishing channels;
-- `/publish text` — publish text through configured default channels;
-- `/publish [channel-a,channel-b] text` — publish to explicit Hub channel IDs.
+All four are ephemeral commands: the group never sees them. Telegram's menu shows `/start` and `/stop` to administrators only, and shows nothing in private chats; the handlers check membership regardless of the menu. Every other command and message is ignored. The former publishing client (`/post`, `/publish`, `/channels`, `/status`, `/context`, `/help` and the create-post flow) is not part of this client.
 
-`/post` stores `awaiting_post_content`, prompts for text, and publishes the next ordinary message through the same shared publication handler used by `/publish`. Successful publication clears the state. A publishing failure leaves the state pending so the user can retry or use `/cancel`.
+Telegram channels (broadcast, no authors) are not supported; groups, supergroups and forum topics are.
 
-Telegram interaction state is scoped by client instance, chat ID, topic ID (or root), and the Hub-resolved canonical actor. A pending flow in one group topic therefore cannot consume an ordinary message from another topic or chat. Product-specific replies preserve the originating `message_thread_id` through the shared `SurfaceContext.reply_target` contract.
+Provider credentials never enter this client.
 
-Provider credentials never enter this client. Telegram identity evidence, human authorisation, social-account access, channels, and publication permissions are resolved server-side by Prism Hub.
+## Whisper status
 
-## Planned features
-
-- **[Whisper](docs/whisper.md)** (proposed, not yet implemented): private-by-default, visibly labeled (`🔒 Приватно · Whisper`) Telegram message selection and native voice readback, with an optional **explicitly confirmed** public share (`🔓 Для всіх · Whisper`). The safe MVP uses ephemeral `/whisper` commands; normal `@prism_hubot` mentions and Telegram Inline Mode do not make a user's query private.
+[Whisper](docs/whisper.md) voice readback is implemented behind configuration (see [speech](docs/speech.md)): private selection, a private or group-wide voice, and the explicit privacy labels. It is not deployed and not yet checked against live Telegram or the speech service. A separate "share this private voice with everyone" confirmation is not planned: choosing `/whisper` is that choice.
 
 ## Run locally
 

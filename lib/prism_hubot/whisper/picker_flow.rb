@@ -21,7 +21,9 @@ module PrismHubot
         @speaker = speaker
       end
 
-      def start(update, arguments)
+      # visibility is :private (only the person hears the result) or :public (the whole group does);
+      # the list itself is private either way.
+      def start(update, arguments, visibility: :private)
         request = parse(arguments)
         return @responder.reply(update, Copy::WHISPER_USAGE) unless request
 
@@ -29,7 +31,7 @@ module PrismHubot
           chat_id: update.chat_id, topic_id: topic(update), actor: update.user_id, usernames: request.usernames
         )
         session = @sessions.open(chat_id: update.chat_id, topic_id: topic(update), user_id: update.user_id,
-          snapshot: snapshot, limit: request.limit, screen: request.screen)
+          snapshot: snapshot, limit: request.limit, screen: request.screen, visibility: visibility)
         text, keyboard = @view.render(entries(update, session), page: 1)
         @responder.reply(update, text, keyboard: keyboard)
       rescue Refusal => refusal
@@ -57,7 +59,9 @@ module PrismHubot
         figures = {count: chosen.size, characters: narration.length}
         return @responder.settle(update, format(Copy::WHISPER_CHOSEN, **figures)) unless @speaker
 
-        started = @speaker.start(update, narration) { @responder.settle(update, format(Copy::WHISPER_CHOSEN_SPEAKING, **figures)) }
+        visibility = session.visibility
+        speaking = (visibility == :public) ? Copy::WHISPER_CHOSEN_SPEAKING_PUBLIC : Copy::WHISPER_CHOSEN_SPEAKING
+        started = @speaker.start(update, narration, visibility: visibility) { @responder.settle(update, format(speaking, **figures)) }
         @responder.settle(update, Copy::WHISPER_VOICE_BUSY) if started == :busy
       rescue Refusal => refusal
         @responder.refuse(update, refusal.message, settle: true)

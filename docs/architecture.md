@@ -33,29 +33,27 @@ prism
 
 ## Client composition
 
-The client consumes the public `PrismBot::Client::Composition` contract. The built-in Prism Bot command set remains the base composition; this repository extends it with product behaviour rather than reconstructing Hub or webhook wiring.
+The client builds a `PrismBot::Client::Composition` of its own instead of extending prism-bot's default one:
+the default commands (`/start` onboarding, `/context`, `/help`, `/status`, `/stop`, `/resume`, `/channels`,
+`/publish`) are Hub-backed and are not part of a Whisper bot.
 
-The current extension adds:
+- Command handlers: `start`, `stop` (administrators and creator), `whisper` (voice to the group) and
+  `whisper_private` (voice to the person), all declared **open commands**, so the webhook neither looks the
+  person up in Hub nor consults the bot lifecycle. The handlers read Telegram's member status themselves
+  (`Whisper::Access`: the bot must be an administrator, and a lookup Telegram does not confirm is never
+  permission).
+- One callback route, `wp`, for the picker's buttons.
+- One observer, which feeds ordinary group messages into the bounded history while Whisper is on.
+- A fallback that ignores everything else.
 
-- `/post` and the exact text `зробити допис` as create-post entry points;
-- explicit `awaiting_post_content` interaction state;
-- the next ordinary message as publication content;
-- `/cancel` as a state-clearing control command;
-- product-specific help/start/unknown copy.
-
-The shared base composition also exposes `/context`. Its Context Card reports the Telegram surface it can verify locally and explicitly leaves Hub binding unverified until Hub provides that contract.
-
-Actual publication still runs through the shared Prism Bot `/publish` handler. The client does not construct provider requests and never receives provider credentials.
-
-Commands have priority over pending conversational state. `/context`, `/help`, `/status`, `/stop`, `/resume`, `/channels`, `/publish`, and `/cancel` therefore remain commands even while `awaiting_post_content` is active.
-
-A successful awaited publication clears the state. If publishing raises a typed Hub/transport error, the interaction transition is never applied and the pending state remains available for a retry.
+`lib/prism_hubot/command_menu.rb` is the single list of the four commands and of which scope shows which
+(administrators: all four; other group members: the two Whisper commands; private chats: none).
 
 ## Telegram surface context
 
-`prism-bot` parses each Telegram update into an immutable `SurfaceContext` carrying the stable chat address plus an optional topic ID. The client uses `update.reply_target` for every product-specific reply, so a flow that starts inside a forum topic keeps its prompt, validation messages, cancellation notice, and shared publication result inside that topic.
+`prism-bot` parses each Telegram update into an immutable `SurfaceContext` carrying the stable chat address plus an optional topic ID. Whisper is switched on per chat or topic, and every reply keeps the originating `message_thread_id` through `update.reply_target`.
 
-Mutable chat titles are presentation-only. They do not participate in state identity. Human identity also does not come from a chat or channel surface; the interaction router uses the Hub-resolved canonical actor independently of the Telegram address.
+Mutable chat titles are presentation-only. Human identity does not come from a chat surface.
 
 ## Interaction state
 

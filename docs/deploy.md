@@ -69,8 +69,10 @@ The in-app command list (the `/` menu in Telegram clients) is server-side state
 owned by the bot token, not by the running process: a bot that never calls
 `setMyCommands` shows an empty menu no matter how many commands it routes.
 `lib/prism_hubot/command_menu.rb` is the single source of truth for that list,
-and `/help` is rendered from the same entries, so the menu and the help text
-cannot drift. A test asserts the menu covers exactly the routed commands.
+with one menu per scope: administrators see `/start`, `/stop`, `/whisper` and
+`/whisper_private`; other group members see the last two; private chats see
+none (`rake telegram:commands` sets or removes each). A test asserts the menu
+covers exactly the routed commands.
 
 The container publishes it on every start (`bin/prism-hubot-container`), together
 with the webhook. Locally, the task reads the token from `.env` in the working

@@ -46,11 +46,11 @@ In this repository's `production` Environment:
 
 | Secret | Meaning |
 | --- | --- |
-| `PRISM_BOT_TELEGRAM_TOKEN` | BotFather token |
+| `PRISM_BOT_TELEGRAM_TOKEN` | BotFather token. In the `production` Environment the secret is named `TELEGRAM_BOT_TOKEN`; infra's contract maps it onto this container variable |
 | `PRISM_BOT_TELEGRAM_WEBHOOK_SECRET` | Telegram's `secret_token` for this webhook; set on every start, so changing it here and republishing rotates it |
 | `PRISM_HUB_API_TOKEN` | scoped Prism Hub client credential, at least 32 characters |
 | `PRISM_BOT_DELIVERY_SECRET` | authenticates `POST /api/v1/delivery` from Prism Hub; 32–256 characters of `A-Z a-z 0-9 _ -`. prism-bot requires it. Generate it for this bot alone: Hub delivers to one destination (h-ua-bot today), so it is not shared yet |
-| `PRISM_HUBOT_AIS_PRIVATE_KEY` | optional (Whisper voice): this product's Ed25519 private key, PEM, for AIS `private_key_jwt`. Set together with `PRISM_HUBOT_TTS_URL` and `PRISM_HUBOT_AIS_CLIENT_ID` (non-secret) or not at all; see [speech.md](speech.md) |
+| `PRISM_HUBOT_AIS_PRIVATE_KEY` | optional (Whisper voice): this product's Ed25519 private key for AIS `private_key_jwt`, as **one line of base64 of the PEM** (`base64 -w0 key.pem`): a sealed secret is one line, so a multi-line PEM cannot be stored as it is. Set together with `PRISM_HUBOT_TTS_URL` and `PRISM_HUBOT_AIS_CLIENT_ID` (non-secret) or not at all; see [speech.md](speech.md) |
 
 They leave this repository only sealed to the target's public key. Infra stores
 none of them. `INFRA_DEPLOY_TOKEN` is no longer used and can be deleted.

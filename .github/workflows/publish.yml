@@ -127,13 +127,16 @@ jobs:
           RECIPIENT: ${{ steps.target.outputs.recipient }}
           NAMES: ${{ steps.target.outputs.names }}
           PRISM_BOT_DELIVERY_SECRET: ${{ secrets.PRISM_BOT_DELIVERY_SECRET }}
-          PRISM_BOT_TELEGRAM_TOKEN: ${{ secrets.PRISM_BOT_TELEGRAM_TOKEN }}
           PRISM_BOT_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.PRISM_BOT_TELEGRAM_WEBHOOK_SECRET }}
           PRISM_HUB_API_TOKEN: ${{ secrets.PRISM_HUB_API_TOKEN }}
+          # The bot's token is the Environment secret TELEGRAM_BOT_TOKEN; infra's contract maps it onto the
+          # container's PRISM_BOT_TELEGRAM_TOKEN. The AIS key is one line of base64 (a sealed secret is one line).
+          PRISM_HUBOT_AIS_PRIVATE_KEY: ${{ secrets.PRISM_HUBOT_AIS_PRIVATE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           set -Eeuo pipefail
           # Exactly the names infra's contract maps, or infra rejects the envelope.
-          provided="PRISM_BOT_DELIVERY_SECRET PRISM_BOT_TELEGRAM_TOKEN PRISM_BOT_TELEGRAM_WEBHOOK_SECRET PRISM_HUB_API_TOKEN"
+          provided="PRISM_BOT_DELIVERY_SECRET PRISM_BOT_TELEGRAM_WEBHOOK_SECRET PRISM_HUBOT_AIS_PRIVATE_KEY PRISM_HUB_API_TOKEN TELEGRAM_BOT_TOKEN"
           if [[ "$NAMES" != "$provided" ]]; then
             echo "::error::infra's prism-hubot contract names [$NAMES]; this workflow seals [$provided]" >&2
             exit 1

@@ -52,7 +52,7 @@ says voice is unavailable; with a URL and a missing credential the process refus
 | `PRISM_HUBOT_TTS_URL` | https URL of prism-ai's `POST /v1/speech` |
 | `PRISM_HUBOT_TTS_VOICE` | voice alias the service knows (default `uk-UA`) |
 | `PRISM_HUBOT_AIS_CLIENT_ID` | this product's AIS client id |
-| `PRISM_HUBOT_AIS_PRIVATE_KEY` | its Ed25519 private key, PEM (secret; `\n` escapes allowed) |
+| `PRISM_HUBOT_AIS_PRIVATE_KEY` | its Ed25519 private key (secret): one line of base64 of the PEM, or the PEM with `\n` escapes |
 | `PRISM_HUBOT_AIS_TOKEN_URL` | AIS token endpoint (default `https://auth.aiaiaiai.org/token`) |
 
 ## What is not verified, and what this does not provide

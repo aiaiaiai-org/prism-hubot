@@ -95,15 +95,19 @@ module PrismHubot
         Base64.urlsafe_encode64(value, padding: false)
       end
 
-      def load_key(pem)
-        key = OpenSSL::PKey.read(pem.to_s.gsub("\\n", "\n"))
+      # The key as PEM, with `\n` escapes if it had to be one line, or the whole PEM base64-encoded: a
+      # sealed secret travels as one `NAME=value` line, so a multi-line PEM cannot be stored as it is.
+      def load_key(value)
+        pem = value.to_s.strip
+        pem = Base64.strict_decode64(pem) unless pem.include?("BEGIN")
+        key = OpenSSL::PKey.read(pem.gsub("\\n", "\n"))
         raise ArgumentError unless key.respond_to?(:oid) && key.oid == "ED25519"
 
         key.sign(nil, "probe") # a public-only key cannot sign: it is refused here, not at the first request
         key
       rescue OpenSSL::PKey::PKeyError, ArgumentError
         raise PrismBot::ConfigurationError.new(
-          "prism_hubot.speech.key.invalid", "the AIS client key must be an Ed25519 private key in PEM form"
+          "prism_hubot.speech.key.invalid", "the AIS client key must be an Ed25519 private key in PEM form (or base64 of it)"
         )
       end
     end

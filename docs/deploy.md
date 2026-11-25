@@ -46,7 +46,7 @@ In this repository's `production` Environment:
 
 | Secret | Meaning |
 | --- | --- |
-| `PRISM_BOT_TELEGRAM_TOKEN` | BotFather token |
+| `TELEGRAM_BOT_TOKEN` | BotFather token; mapped to runtime `PRISM_BOT_TELEGRAM_TOKEN` by the publish workflow |
 | `PRISM_BOT_TELEGRAM_WEBHOOK_SECRET` | Telegram's `secret_token` for this webhook; set on every start, so changing it here and republishing rotates it |
 | `PRISM_HUB_API_TOKEN` | scoped Prism Hub client credential, at least 32 characters |
 | `PRISM_BOT_DELIVERY_SECRET` | authenticates `POST /api/v1/delivery` from Prism Hub; 32–256 characters of `A-Z a-z 0-9 _ -`. prism-bot requires it. Generate it for this bot alone: Hub delivers to one destination (h-ua-bot today), so it is not shared yet |

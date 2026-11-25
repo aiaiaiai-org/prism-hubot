@@ -8,7 +8,8 @@ module PrismHubot
     #
     #   PRISM_HUBOT_TTS_URL             https URL of prism-ai's POST /v1/speech
     #   PRISM_HUBOT_TTS_VOICE           voice alias the service knows (default uk-UA)
-    #   PRISM_HUBOT_AIS_CLIENT_ID       this product's AIS client id
+    #   PRISM_HUBOT_AIS_CLIENT_ID       this product's AIS client id (as registered in 4x-ais, e.g. prism-hubot)
+    #   PRISM_HUBOT_AIS_KEY_ID          the `kid` the public half of the key is registered under (default k1)
     #   PRISM_HUBOT_AIS_PRIVATE_KEY     its Ed25519 private key, PEM (secret; \n escapes allowed)
     #   PRISM_HUBOT_AIS_TOKEN_URL       AIS token endpoint (default https://auth.aiaiaiai.org/token)
     class Configuration
@@ -32,8 +33,15 @@ module PrismHubot
         token_url = environment.fetch("PRISM_HUBOT_AIS_TOKEN_URL", DEFAULT_TOKEN_URL).to_s.strip
         [url, token_url].each { https!(_1) }
 
+        key_id = environment.fetch("PRISM_HUBOT_AIS_KEY_ID", AisTokenSource::DEFAULT_KEY_ID).to_s.strip
+        unless AisTokenSource::KEY_ID.match?(key_id)
+          raise PrismBot::ConfigurationError.new(
+            "prism_hubot.speech.key_id.invalid", "PRISM_HUBOT_AIS_KEY_ID must be 1-64 letters, digits, - or _"
+          )
+        end
+
         tokens = AisTokenSource.new(
-          client_id: environment.fetch("PRISM_HUBOT_AIS_CLIENT_ID").strip,
+          client_id: environment.fetch("PRISM_HUBOT_AIS_CLIENT_ID").strip, key_id: key_id,
           private_key_pem: environment.fetch("PRISM_HUBOT_AIS_PRIVATE_KEY"),
           token_url: token_url, audience: AUDIENCE, scope: SCOPE, http: http
         )

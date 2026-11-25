@@ -77,7 +77,7 @@ class SpeechTest < Minitest::Test
     PrismHubot::Speech::AisTokenSource.new(
       client_id: "prism-hubot", private_key_pem: key.private_to_pem,
       token_url: "https://auth.example.test/token", audience: "prism-ai", scope: "tts.synthesize",
-      http: http, clock: -> { now.first }, jti: -> { "jti-1" }, **options
+      http: http, clock: -> { now.first }, jti: -> { "test-assertion-id-1" }, **options
     )
   end
 
@@ -100,10 +100,34 @@ class SpeechTest < Minitest::Test
 
     header, claims, signature = fields["client_assertion"].split(".")
     decode = ->(part) { JSON.parse(Base64.urlsafe_decode64(part)) }
-    assert_equal({"alg" => "EdDSA", "typ" => "JWT"}, decode.call(header))
+    assert_equal({"alg" => "EdDSA", "typ" => "JWT", "kid" => "k1"}, decode.call(header), "AIS looks the key up by kid")
     assert_equal({"iss" => "prism-hubot", "sub" => "prism-hubot", "aud" => "https://auth.example.test/token",
-                  "jti" => "jti-1", "iat" => 1_000, "exp" => 1_060}, decode.call(claims))
+                  "jti" => "test-assertion-id-1", "iat" => 1_000, "exp" => 1_060}, decode.call(claims))
     assert key.verify(nil, Base64.urlsafe_decode64(signature), "#{header}.#{claims}"), "signed by the product's own key"
+  end
+
+  def test_the_assertion_names_the_registered_key_id_and_a_bad_one_is_refused
+    http = FakeHttp.new(token_response)
+    token_source(http, key_id: "m2").call
+    fields = URI.decode_www_form(http.posts.fetch(0).fetch(:body)).to_h
+    header = JSON.parse(Base64.urlsafe_decode64(fields.fetch("client_assertion").split(".").first))
+    assert_equal "m2", header.fetch("kid")
+
+    ["", "a b", "a" * 65, "k/1"].each do |bad|
+      assert_raises(ArgumentError) { token_source(FakeHttp.new, key_id: bad) }
+    end
+  end
+
+  def test_the_assertion_satisfies_what_ais_checks_of_its_claims
+    http = FakeHttp.new(token_response)
+    token_source(http, now: [1_000]).call
+    fields = URI.decode_www_form(http.posts.fetch(0).fetch(:body)).to_h
+    claims = JSON.parse(Base64.urlsafe_decode64(fields.fetch("client_assertion").split(".")[1]))
+    assert_includes 16..128, claims.fetch("jti").length
+    assert_match(/\A[A-Za-z0-9_.-]+\z/, claims.fetch("jti"))
+    assert_operator claims.fetch("exp"), :<=, 1_000 + 300 + 30
+    assert_operator claims.fetch("exp"), :>, 1_000
+    refute fields.key?("client_secret"), "AIS refuses a secret on this grant"
   end
 
   def test_token_is_cached_until_shortly_before_it_expires_and_can_be_rejected
@@ -327,6 +351,14 @@ class SpeechTest < Minitest::Test
     end
     assert_raises(PrismBot::ConfigurationError) do
       PrismHubot::Speech::Configuration.build(environment(PRISM_HUBOT_AIS_TOKEN_URL: "http://auth.example.test/token"))
+    end
+  end
+
+  def test_the_key_id_defaults_to_k1_and_must_be_well_formed
+    assert PrismHubot::Speech::Configuration.build(environment(PRISM_HUBOT_AIS_KEY_ID: "m1"), http: FakeHttp.new)
+    assert PrismHubot::Speech::Configuration.build(environment, http: FakeHttp.new)
+    assert_raises(PrismBot::ConfigurationError) do
+      PrismHubot::Speech::Configuration.build(environment(PRISM_HUBOT_AIS_KEY_ID: "bad id"))
     end
   end
 

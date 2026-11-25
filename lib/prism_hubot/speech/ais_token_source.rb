@@ -9,10 +9,12 @@ module PrismHubot
     # with the product's own Ed25519 key, for one audience and scope. The token is kept only in memory
     # and reused until shortly before it expires. There is no shared secret and nothing is persisted.
     #
-    # UNVERIFIED against AIS: the request below follows the standard and what the Hub's protocol notes
-    # say (client_credentials, private_key_jwt, EdDSA, exp <= 5 minutes). AIS's own contract
-    # (aiaiaiai-org/4x-ais docs/runtime.md) could not be read from here; the parameter that names the
-    # audience is the first thing to check against it.
+    # Checked against AIS's source (aiaiaiai-org/4x-ais: docs/runtime.md, src/product_token.rs and the
+    # `client_credentials` branch of src/issuer.rs): the form carries grant_type, client_assertion_type,
+    # client_assertion, `audience` and `scope` (never a secret); the assertion's header needs `alg: EdDSA`
+    # and the `kid` of a key registered for this client; its claims are iss = sub = client_id, aud = the
+    # token endpoint, a 16-128 character jti and exp at most five minutes ahead. The answer is an `at+jwt`
+    # access token for that audience and the granted scopes, valid for 300 seconds.
     class AisTokenSource
       ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer".freeze
       ASSERTION_LIFETIME = 60
@@ -20,9 +22,15 @@ module PrismHubot
       MAX_LIFETIME = 300
       MAX_RESPONSE_BYTES = 16 * 1024
 
-      def initialize(client_id:, private_key_pem:, token_url:, audience:, scope:, http: Http.new,
+      DEFAULT_KEY_ID = "k1".freeze
+      KEY_ID = /\A[A-Za-z0-9_-]{1,64}\z/
+
+      def initialize(client_id:, private_key_pem:, token_url:, audience:, scope:, key_id: DEFAULT_KEY_ID, http: Http.new,
         clock: -> { Time.now.to_i }, jti: -> { SecureRandom.uuid })
+        raise ArgumentError, "key_id is invalid" unless KEY_ID.match?(key_id.to_s)
+
         @client_id = client_id
+        @key_id = key_id
         @key = load_key(private_key_pem)
         @token_url = token_url
         @audience = audience
@@ -84,7 +92,7 @@ module PrismHubot
       end
 
       def assertion(now)
-        header = {"alg" => "EdDSA", "typ" => "JWT"}
+        header = {"alg" => "EdDSA", "typ" => "JWT", "kid" => @key_id}
         claims = {"iss" => @client_id, "sub" => @client_id, "aud" => @token_url, "jti" => @jti.call,
                   "iat" => now, "exp" => now + ASSERTION_LIFETIME}
         signing_input = [header, claims].map { base64url(JSON.generate(_1)) }.join(".")
